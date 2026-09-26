@@ -383,6 +383,7 @@ const PAINTER_OWNED_CONTENT_SELECTOR = [
   `.${CLASS_NAMES.pageFooter}`,
   '[data-behind-doc-section]',
   '[data-superdoc-column-separator="true"]',
+  '[data-superdoc-page-border]',
 ].join(', ');
 
 /**

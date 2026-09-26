@@ -17,6 +17,7 @@ import type {
   ParagraphBorders,
   ParagraphMeasure,
   SectionVerticalAlign,
+  SectionPageBorders,
   MarkerTrackedChange,
   SourceAnchor,
   TableBlock,
@@ -72,6 +73,8 @@ export type ResolvedPage = {
   pageCountFieldsExact?: boolean;
   /** Page margins from the source page. Used for ruler rendering and header/footer positioning. */
   margins?: PageMargins;
+  /** Page frame resolved from the owning section. */
+  pageBorders?: SectionPageBorders;
   /** Extra bottom space reserved for footnotes (px). Used for footer space calculation. */
   footnoteReserved?: number;
   /** Numeric page number after section numbering restart/offset. Used for OOXML odd/even parity. */

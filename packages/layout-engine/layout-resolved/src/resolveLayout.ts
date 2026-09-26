@@ -913,6 +913,7 @@ export function resolvePage(input: ResolvePageInput): ResolvedPage {
     }),
     ...(input.pageCountFieldsExact === false ? { pageCountFieldsExact: false } : {}),
     margins: page.margins,
+    pageBorders: page.pageBorders,
     footnoteReserved: page.footnoteReserved,
     displayNumber: page.displayNumber,
     numberText: page.numberText,

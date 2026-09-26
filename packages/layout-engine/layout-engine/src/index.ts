@@ -15,6 +15,7 @@ import type {
   ParaFragment,
   PageBreakBlock,
   PageMargins,
+  SectionPageBorders,
   ParagraphBlock,
   ParagraphMeasure,
   SectionBreakBlock,
@@ -4336,6 +4337,17 @@ function* layoutDocumentSteps(
     (pages[i] as { bodyMaxY?: number }).bodyMaxY = options.footnotePageFlow
       ? (s.committedBodyBottom ?? s.topMargin)
       : Math.max(s.topMargin ?? 0, adjusted);
+  }
+
+  const pageBordersBySection = new Map<number, SectionPageBorders>();
+  for (const block of blocks) {
+    if (block.kind !== 'sectionBreak' || !block.pageBorders) continue;
+    const sectionIndex = block.attrs?.sectionIndex;
+    if (typeof sectionIndex === 'number') pageBordersBySection.set(sectionIndex, block.pageBorders);
+  }
+  for (const page of pages) {
+    if (typeof page.sectionIndex !== 'number') continue;
+    page.pageBorders = pageBordersBySection.get(page.sectionIndex);
   }
 
   const layout: Layout = {

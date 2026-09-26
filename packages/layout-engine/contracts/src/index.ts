@@ -1996,6 +1996,20 @@ export type DrawingBlock = VectorShapeDrawing | TextboxDrawing | ShapeGroupDrawi
  */
 export type SectionVerticalAlign = 'top' | 'center' | 'bottom' | 'both';
 
+export type SectionPageBorderSide = {
+  width: number;
+  space: number;
+  color: string;
+};
+
+export type SectionPageBorders = {
+  offsetFrom: 'page';
+  top?: SectionPageBorderSide;
+  right?: SectionPageBorderSide;
+  bottom?: SectionPageBorderSide;
+  left?: SectionPageBorderSide;
+};
+
 export type SectionBreakBlock = {
   kind: 'sectionBreak';
   id: BlockId;
@@ -2009,6 +2023,7 @@ export type SectionBreakBlock = {
   requiredPageParity?: 'even' | 'odd';
   pageSize?: { w: number; h: number };
   orientation?: 'portrait' | 'landscape';
+  pageBorders?: SectionPageBorders;
   margins: {
     /** Header margin (distance from top of page to header content) */
     header?: number;
@@ -3292,6 +3307,8 @@ export type Page = {
    */
   suppressHeaderFooter?: boolean;
   margins?: PageMargins;
+  /** Section-owned frame outside the page's body margins. */
+  pageBorders?: SectionPageBorders;
   /**
    * Extra bottom space reserved on this page for footnotes (in px).
    * Used by consumers (e.g. editors/painters) to keep footer hit regions and

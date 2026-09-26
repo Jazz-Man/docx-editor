@@ -2044,7 +2044,22 @@ export class DomPainter {
     return geometry;
   }
   private renderDecorationsForPage(pageEl: HTMLElement, page: ResolvedPage, pageIndex: number): void {
+    pageEl.querySelector('[data-superdoc-page-border]')?.remove();
     if (this.isSemanticFlow) return;
+    if (page.pageBorders) {
+      const border = pageEl.ownerDocument.createElement('div');
+      border.setAttribute('data-superdoc-page-border', '');
+      border.setAttribute('aria-hidden', 'true');
+      border.style.position = 'absolute';
+      border.style.boxSizing = 'border-box';
+      border.style.pointerEvents = 'none';
+      for (const side of ['top', 'right', 'bottom', 'left'] as const) {
+        const definition = page.pageBorders[side];
+        border.style.setProperty(side, `${definition?.space ?? 0}px`);
+        if (definition) border.style.setProperty(`border-${side}`, `${definition.width}px solid ${definition.color}`);
+      }
+      pageEl.appendChild(border);
+    }
     this.renderDecorationSection(pageEl, page, pageIndex, 'header');
     this.renderDecorationSection(pageEl, page, pageIndex, 'footer');
   }
