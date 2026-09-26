@@ -20,6 +20,7 @@ export const ARTIFACT_CONTENT_SET_SCHEMA = 'superdoc-artifact-content-set.v1';
 export const ARTIFACT_ENVELOPE_SCHEMA = 'superdoc-artifact-envelope.v1';
 export const ARTIFACT_POINTER_SCHEMA = 'superdoc-artifact-pointer.v1';
 export const ARTIFACT_PROMOTION_JOURNAL_SCHEMA = 'superdoc-artifact-promotion-journal.v1';
+export const ARTIFACT_RETENTION_SCHEMA = 'superdoc-artifact-retention.v1';
 
 const DIGEST_RE = /^[0-9a-f]{64}$/u;
 const SEGMENT_RE = /^[A-Za-z0-9][A-Za-z0-9._-]*$/u;
@@ -338,10 +339,12 @@ export function createSuperDocArtifactStore(options) {
     pointer: path.join(root, 'pointers', 'current.json'),
     journal: path.join(root, 'promotion-journal.json'),
     lock: path.join(root, 'promotion.lock'),
+    retention: path.join(root, 'retention.json'),
+    pins: path.join(root, 'pins'),
   });
   const defaultCheckpoint = options.checkpoint;
   const lockPollMs = options.lockPollMs ?? 20;
-  const lockTimeoutMs = options.lockTimeoutMs ?? 30_000;
+  const lockTimeoutMs = options.lockTimeoutMs ?? 120_000;
   const orphanedLockMs = options.orphanedLockMs ?? 30_000;
   const lockCheckpoint = options.lockCheckpoint;
 
@@ -353,6 +356,7 @@ export function createSuperDocArtifactStore(options) {
       ensureDirectory(paths.envelopes, 'artifact envelope root'),
       ensureDirectory(paths.pointers, 'artifact pointer root'),
       ensureDirectory(paths.pointerVersions, 'artifact pointer version root'),
+      ensureDirectory(paths.pins, 'artifact pin root'),
     ]);
   }
 
@@ -361,22 +365,31 @@ export function createSuperDocArtifactStore(options) {
     assertSegment(runId, 'runId');
     assertSegment(producer, 'producer');
     const runRoot = path.join(paths.runs, runId);
-    try {
-      await mkdir(runRoot);
-    } catch (error) {
-      if (error?.code === 'EEXIST') {
-        throw new ArtifactStoreError(`Artifact run ${runId} already exists.`, 'run-exists');
-      }
-      throw error;
-    }
     const stagingRoot = path.join(runRoot, 'staging', producer);
-    await mkdir(stagingRoot, { recursive: true });
-    await writeJsonAtomic(path.join(runRoot, 'run.json'), {
-      schema: 'superdoc-artifact-run.v1',
-      runId,
-      producer,
-      createdAt: new Date().toISOString(),
-      metadata,
+    await withPromotionLock(async () => {
+      try {
+        await mkdir(runRoot);
+      } catch (error) {
+        if (error?.code === 'EEXIST') {
+          throw new ArtifactStoreError(`Artifact run ${runId} already exists.`, 'run-exists');
+        }
+        throw error;
+      }
+      try {
+        await mkdir(stagingRoot, { recursive: true });
+        await writeJsonAtomic(path.join(runRoot, 'run.json'), {
+          schema: 'superdoc-artifact-run.v1',
+          runId,
+          producer,
+          createdAt: new Date().toISOString(),
+          pid: process.pid,
+          hostname: hostname(),
+          metadata,
+        });
+      } catch (error) {
+        await rm(runRoot, { recursive: true, force: true });
+        throw error;
+      }
     });
     await invokeCheckpoint(checkpoint ?? defaultCheckpoint, 'run:created', { runId, producer, runRoot, stagingRoot });
     return Object.freeze({ runId, producer, root: runRoot, stagingRoot });
@@ -554,8 +567,26 @@ export function createSuperDocArtifactStore(options) {
     if (pointer.digest !== digest) {
       throw new ArtifactStoreError(`Pointer version path ${digest} contains ${pointer.digest}.`, 'pointer-version');
     }
+    if (verifyObjects && (await readRetention()).retiredPointerDigests.includes(digest)) {
+      throw new ArtifactStoreError(`Artifact generation ${pointer.generation} was retired by retention.`, 'history-pruned');
+    }
     const envelope = await readEnvelopeForPointer(pointer, { verifyObjects });
     return { ...pointer, envelope };
+  }
+
+  async function readRetention() {
+    const value = await readRegularJson(paths.retention, 'artifact retention record');
+    if (!value) return { schema: ARTIFACT_RETENTION_SCHEMA, retiredPointerDigests: [] };
+    assertSelfDigest(value, 'artifact retention record');
+    if (value.schema !== ARTIFACT_RETENTION_SCHEMA || !Array.isArray(value.retiredPointerDigests)) {
+      throw new ArtifactStoreError('Artifact retention record has an unsupported shape.', 'retention-shape');
+    }
+    for (const digest of value.retiredPointerDigests) assertDigest(digest, 'retired pointer digest');
+    if (new Set(value.retiredPointerDigests).size !== value.retiredPointerDigests.length
+      || canonicalArtifactJson([...value.retiredPointerDigests].sort(compareUtf8)) !== canonicalArtifactJson(value.retiredPointerDigests)) {
+      throw new ArtifactStoreError('Artifact retention digests must be sorted and unique.', 'retention-shape');
+    }
+    return value;
   }
 
   function lockOwnerAlive(owner) {
@@ -981,6 +1012,202 @@ export function createSuperDocArtifactStore(options) {
     return withPromotionLock(() => recoverPromotionUnderLock(selectedCheckpoint));
   }
 
+  async function listPins() {
+    const digests = [];
+    for (const entry of await readdir(paths.pins, { withFileTypes: true })) {
+      const match = /^([0-9a-f]{64})\.json$/u.exec(entry.name);
+      if (!match || !entry.isFile() || entry.isSymbolicLink()) {
+        throw new ArtifactStoreError(`Unrecognized artifact pin: ${entry.name}`, 'retention-pin');
+      }
+      const pin = await readRegularJson(path.join(paths.pins, entry.name), 'artifact pin');
+      if (pin?.schema !== 'superdoc-artifact-pin.v1' || pin.pointerDigest !== match[1]) {
+        throw new ArtifactStoreError(`Invalid artifact pin: ${entry.name}`, 'retention-pin');
+      }
+      digests.push(match[1]);
+    }
+    return digests.sort(compareUtf8);
+  }
+
+  async function pinPointerVersion(pointerVersionDigest) {
+    await ensureLayout();
+    const digest = assertDigest(pointerVersionDigest, 'pointerVersionDigest');
+    return withPromotionLock(async () => {
+      if ((await readRetention()).retiredPointerDigests.includes(digest)) {
+        throw new ArtifactStoreError(`Artifact pointer ${digest} was already retired.`, 'history-pruned');
+      }
+      const pointer = await readPointerVersion(digest);
+      if (!pointer) throw new ArtifactStoreError(`Artifact pointer ${digest} does not exist.`, 'pointer-version');
+      await writeJsonAtomic(path.join(paths.pins, `${digest}.json`), {
+        schema: 'superdoc-artifact-pin.v1', pointerDigest: digest,
+      });
+      return pointer;
+    });
+  }
+
+  async function unpinPointerVersion(pointerVersionDigest) {
+    await ensureLayout();
+    const digest = assertDigest(pointerVersionDigest, 'pointerVersionDigest');
+    return withPromotionLock(async () => {
+      await rm(path.join(paths.pins, `${digest}.json`), { force: true });
+    });
+  }
+
+  async function entryBytes(target) {
+    const state = await lstat(target);
+    if (state.isSymbolicLink()) {
+      throw new ArtifactStoreError(`Artifact retention found a symlink: ${target}`, 'tree-symlink');
+    }
+    if (state.isFile()) return state.size;
+    if (!state.isDirectory()) {
+      throw new ArtifactStoreError(`Artifact retention found a non-file entry: ${target}`, 'tree-entry');
+    }
+    let bytes = 0;
+    for (const entry of await readdir(target)) bytes += await entryBytes(path.join(target, entry));
+    return bytes;
+  }
+
+  async function inspectRuns(minAgeMs) {
+    const active = [];
+    const stale = [];
+    for (const entry of await readdir(paths.runs, { withFileTypes: true })) {
+      assertSegment(entry.name, 'artifact run directory');
+      if (!entry.isDirectory() || entry.isSymbolicLink()) {
+        throw new ArtifactStoreError(`Artifact run is not a directory: ${entry.name}`, 'run-reference');
+      }
+      const runRoot = path.join(paths.runs, entry.name);
+      const run = await readRegularJson(path.join(runRoot, 'run.json'), 'artifact run');
+      if (run && (run.schema !== 'superdoc-artifact-run.v1' || run.runId !== entry.name)) {
+        throw new ArtifactStoreError(`Invalid artifact run: ${entry.name}`, 'run-reference');
+      }
+      const createdAt = run?.createdAt ? Date.parse(run.createdAt) : (await lstat(runRoot)).mtimeMs;
+      if (!Number.isFinite(createdAt)) throw new ArtifactStoreError(`Invalid artifact run timestamp: ${entry.name}`, 'run-reference');
+      const old = Date.now() - createdAt >= minAgeMs;
+      const foreignOwner = Boolean(run?.hostname && run.hostname !== hostname());
+      const localOwnerAlive = run?.hostname === hostname() && Number.isSafeInteger(run.pid)
+        ? lockOwnerAlive(run)
+        : null;
+      (old && !foreignOwner && localOwnerAlive !== true ? stale : active).push({ runId: entry.name, root: runRoot });
+    }
+    return { active, stale };
+  }
+
+  async function prune({ apply = false, keepRecent = 2, minAgeMs = 24 * 60 * 60 * 1000, checkpoint } = {}) {
+    if (!Number.isSafeInteger(keepRecent) || keepRecent < 0 || !Number.isSafeInteger(minAgeMs) || minAgeMs < 0) {
+      throw new ArtifactStoreError('Retention limits must be non-negative integers.', 'retention-policy');
+    }
+    await ensureLayout();
+    return withPromotionLock(async () => {
+      if (apply) await recoverPromotionUnderLock(checkpoint ?? defaultCheckpoint);
+      else if (await readJournal()) {
+        throw new ArtifactStoreError('A promotion journal requires recovery before retention inspection.', 'retention-journal');
+      }
+      const retention = await readRetention();
+      const current = await readCurrentPointer({ verifyObjects: false });
+      const pins = await listPins();
+      const versions = new Map();
+      const versionTimes = new Map();
+      for (const entry of await readdir(paths.pointerVersions, { withFileTypes: true })) {
+        const match = /^([0-9a-f]{64})\.json$/u.exec(entry.name);
+        if (!match || !entry.isFile() || entry.isSymbolicLink()) {
+          throw new ArtifactStoreError(`Unrecognized artifact pointer version: ${entry.name}`, 'pointer-version');
+        }
+        const pointer = await readPointerVersion(match[1], { verifyObjects: false });
+        versions.set(match[1], pointer);
+        versionTimes.set(match[1], (await lstat(path.join(paths.pointerVersions, entry.name))).mtimeMs);
+      }
+      const protectedDigests = new Set(pins);
+      let ancestor = current;
+      let depth = 0;
+      while (ancestor) {
+        if (!versions.has(ancestor.digest)) {
+          throw new ArtifactStoreError(`Missing current pointer ancestor ${ancestor.digest}.`, 'retention-history');
+        }
+        if (depth <= keepRecent) protectedDigests.add(ancestor.digest);
+        const previous = ancestor.previousPointerDigest;
+        if (!previous) break;
+        const parent = versions.get(previous);
+        if (!parent || parent.generation !== ancestor.generation - 1 || depth > versions.size) {
+          throw new ArtifactStoreError(`Invalid pointer ancestry at ${ancestor.digest}.`, 'retention-history');
+        }
+        ancestor = parent;
+        depth += 1;
+      }
+      for (const [digest, modifiedAt] of versionTimes) {
+        if (Date.now() - modifiedAt < minAgeMs) protectedDigests.add(digest);
+      }
+      for (const digest of protectedDigests) {
+        if (!versions.has(digest) || retention.retiredPointerDigests.includes(digest)) {
+          throw new ArtifactStoreError(`Protected pointer ${digest} is missing or retired.`, 'retention-history');
+        }
+      }
+      const protectedObjects = new Set();
+      for (const digest of protectedDigests) {
+        for (const component of versions.get(digest).envelope.components) protectedObjects.add(component.objectDigest);
+      }
+      for (const digest of protectedObjects) await verifyObject(digest);
+      const retired = [...versions.keys()].filter((digest) => !protectedDigests.has(digest));
+      const objects = [];
+      const incoming = [];
+      let totalBytes = 0;
+      let reclaimableBytes = 0;
+      for (const entry of await readdir(paths.objects, { withFileTypes: true })) {
+        if (entry.name.startsWith('.incoming-')) {
+          if (!/^\.incoming-[0-9a-f]{64}-[0-9]+-[A-Za-z0-9-]+$/u.test(entry.name)
+            || !entry.isDirectory() || entry.isSymbolicLink()) {
+            throw new ArtifactStoreError(`Invalid incoming artifact object: ${entry.name}`, 'retention-object');
+          }
+          const incomingRoot = path.join(paths.objects, entry.name);
+          if (Date.now() - (await lstat(incomingRoot)).mtimeMs >= minAgeMs) incoming.push(incomingRoot);
+          continue;
+        }
+        if (!DIGEST_RE.test(entry.name) || !entry.isDirectory() || entry.isSymbolicLink()) {
+          throw new ArtifactStoreError(`Unrecognized artifact object: ${entry.name}`, 'retention-object');
+        }
+        const objectRoot = path.join(paths.objects, entry.name);
+        const bytes = await entryBytes(objectRoot);
+        totalBytes += bytes;
+        const old = Date.now() - (await lstat(objectRoot)).mtimeMs >= minAgeMs;
+        if (!protectedObjects.has(entry.name) && old) {
+          objects.push({ digest: entry.name, bytes });
+          reclaimableBytes += bytes;
+        }
+      }
+      const runs = await inspectRuns(minAgeMs);
+      const report = {
+        currentGeneration: current?.generation ?? null,
+        generations: versions.size,
+        retainedGenerations: protectedDigests.size,
+        retiredGenerations: retired.length,
+        pinnedGenerations: pins.length,
+        activeRuns: runs.active.map((run) => run.runId),
+        staleRuns: runs.stale.map((run) => run.runId),
+        objectBytes: totalBytes,
+        reclaimableBytes,
+        reclaimableObjects: objects.length,
+        staleIncomingObjects: incoming.length,
+        applied: false,
+      };
+      if (!apply) return report;
+      if (runs.active.length > 0) {
+        throw new ArtifactStoreError(`Retention refused ${runs.active.length} active artifact run(s).`, 'retention-active-run');
+      }
+      for (const run of runs.stale) await rm(run.root, { recursive: true, force: true });
+      for (const incomingRoot of incoming) await rm(incomingRoot, { recursive: true, force: true });
+      await syncDirectory(paths.objects);
+      const retiredPointerDigests = [...new Set([...retention.retiredPointerDigests, ...retired])].sort(compareUtf8);
+      if (retiredPointerDigests.length !== retention.retiredPointerDigests.length) {
+        await writeJsonAtomic(paths.retention, withSelfDigest({ schema: ARTIFACT_RETENTION_SCHEMA, retiredPointerDigests }));
+      }
+      await invokeCheckpoint(checkpoint ?? defaultCheckpoint, 'retention:after-record', report);
+      for (const object of objects) {
+        await rm(path.join(paths.objects, object.digest), { recursive: true, force: true });
+        await invokeCheckpoint(checkpoint ?? defaultCheckpoint, 'retention:after-object', object);
+      }
+      await syncDirectory(paths.objects);
+      return { ...report, applied: true };
+    });
+  }
+
   async function promote({
     components,
     compatibilityViews = [],
@@ -1101,6 +1328,9 @@ export function createSuperDocArtifactStore(options) {
     verifyObject,
     readCurrentPointer,
     readPointerVersion,
+    pinPointerVersion,
+    unpinPointerVersion,
+    prune,
     promote,
     recoverPromotion,
   });

@@ -634,3 +634,162 @@ test('serialized promotion rejects concurrent and sequential stale promoters wit
   assert.deepEqual(await readCompatibilitySet(fixture), { engine: 'winner\n', public: 'winner\n' });
   await assertNoTransactionScratch(fixture);
 });
+
+test('retention keeps current, recent and pinned generations while retiring old object bytes', async (t) => {
+  const fixture = await createFixture(t);
+  const sets = [];
+  const pointers = [];
+  for (const version of ['one', 'two', 'three', 'four']) {
+    const set = await installSet(fixture, version);
+    sets.push(set);
+    pointers.push((await promoteSet(fixture, set)).pointer);
+  }
+  await fixture.store.pinPointerVersion(pointers[0].digest);
+  const preview = await fixture.store.prune({ keepRecent: 1, minAgeMs: 0 });
+  assert.equal(preview.applied, false);
+  assert.equal(preview.retainedGenerations, 3);
+  assert.equal(preview.reclaimableObjects, 2);
+  assert.equal(await exists(sets[1].engine.root), true);
+
+  const applied = await fixture.store.prune({ apply: true, keepRecent: 1, minAgeMs: 0 });
+  assert.equal(applied.applied, true);
+  assert.equal(await exists(sets[1].engine.root), false);
+  assert.equal(await exists(sets[0].engine.root), true);
+  assert.equal((await fixture.store.readCurrentPointer()).digest, pointers[3].digest);
+  assert.deepEqual(await readCompatibilitySet(fixture), { engine: 'four\n', public: 'four\n' });
+  await assert.rejects(
+    fixture.store.readPointerVersion(pointers[1].digest),
+    (error) => error instanceof ArtifactStoreError && error.code === 'history-pruned',
+  );
+  assert.equal((await fixture.store.readPointerVersion(pointers[1].digest, { verifyObjects: false })).generation, 2);
+  assert.equal((await fixture.store.readPointerVersion(pointers[0].digest)).generation, 1);
+  await assert.rejects(
+    fixture.store.pinPointerVersion(pointers[1].digest),
+    (error) => error instanceof ArtifactStoreError && error.code === 'history-pruned',
+  );
+  assert.equal((await fixture.store.prune({ apply: true, keepRecent: 1, minAgeMs: 0 })).reclaimableObjects, 0);
+});
+
+test('retention preserves shared objects and resumes after deletion is interrupted', async (t) => {
+  const fixture = await createFixture(t);
+  const shared = await installComponent(fixture, 'public', 'shared');
+  const versions = [];
+  for (const value of ['old', 'middle', 'current']) {
+    const engine = await installComponent(fixture, 'engine', value);
+    versions.push({ engine, pointer: (await promoteSet(fixture, { engine, public: shared })).pointer });
+  }
+  await assert.rejects(
+    fixture.store.prune({
+      apply: true,
+      keepRecent: 0,
+      minAgeMs: 0,
+      checkpoint(name) {
+        if (name === 'retention:after-record') throw new Error('interrupted retention');
+      },
+    }),
+    /interrupted retention/u,
+  );
+  await assert.rejects(
+    fixture.store.readPointerVersion(versions[0].pointer.digest),
+    (error) => error instanceof ArtifactStoreError && error.code === 'history-pruned',
+  );
+  assert.equal(await exists(versions[0].engine.root), true);
+  const resumed = await fixture.store.prune({ apply: true, keepRecent: 0, minAgeMs: 0 });
+  assert.equal(resumed.reclaimableObjects, 2);
+  assert.equal(await exists(versions[0].engine.root), false);
+  assert.equal(await exists(shared.root), true);
+  assert.equal((await fixture.store.readCurrentPointer()).digest, versions[2].pointer.digest);
+});
+
+test('retention refuses active runs and serializes new run creation with pruning', async (t) => {
+  let releasePrune;
+  let pruneEntered;
+  const entered = new Promise((resolve) => { pruneEntered = resolve; });
+  const released = new Promise((resolve) => { releasePrune = resolve; });
+  const fixture = await createFixture(t);
+  const set = await installSet(fixture, 'current');
+  await promoteSet(fixture, set);
+  const active = await fixture.store.createRun({ producer: 'engine' });
+  await assert.rejects(
+    fixture.store.prune({ apply: true, minAgeMs: 0 }),
+    (error) => error instanceof ArtifactStoreError && error.code === 'retention-active-run',
+  );
+  await fixture.store.discardRun(active);
+
+  const pruning = fixture.store.prune({
+    apply: true,
+    minAgeMs: 0,
+    async checkpoint(name) {
+      if (name === 'retention:after-record') {
+        pruneEntered();
+        await released;
+      }
+    },
+  });
+  await entered;
+  let created = false;
+  const creating = fixture.store.createRun({ producer: 'engine' }).then((run) => {
+    created = true;
+    return run;
+  });
+  await delay(30);
+  assert.equal(created, false);
+  releasePrune();
+  await pruning;
+  const run = await creating;
+  assert.equal(created, true);
+  await fixture.store.discardRun(run);
+});
+
+test('retention fails closed when a protected object is corrupt', async (t) => {
+  const fixture = await createFixture(t);
+  const first = await installSet(fixture, 'old');
+  await promoteSet(fixture, first);
+  const current = await installSet(fixture, 'current');
+  await promoteSet(fixture, current);
+  await writeFile(path.join(current.engine.root, 'corruption.txt'), 'corrupt');
+  await assert.rejects(
+    fixture.store.prune({ apply: true, keepRecent: 0, minAgeMs: 0 }),
+    (error) => error instanceof ArtifactStoreError && error.code === 'object-corrupt',
+  );
+  assert.equal(await exists(first.engine.root), true);
+  assert.equal(await exists(fixture.store.paths.retention), false);
+});
+
+test('retention grace protects recent history and removes old ownerless staging runs', async (t) => {
+  const fixture = await createFixture(t);
+  const first = await installSet(fixture, 'old');
+  await promoteSet(fixture, first);
+  const current = await installSet(fixture, 'current');
+  await promoteSet(fixture, current);
+  const run = await fixture.store.createRun({ producer: 'engine' });
+  await writeFile(path.join(run.root, 'run.json'), JSON.stringify({
+    schema: 'superdoc-artifact-run.v1',
+    runId: run.runId,
+    producer: 'engine',
+    createdAt: '2020-01-01T00:00:00.000Z',
+  }));
+
+  const preview = await fixture.store.prune({ keepRecent: 0 });
+  assert.equal(preview.retainedGenerations, 2);
+  assert.deepEqual(preview.staleRuns, [run.runId]);
+  assert.equal(preview.reclaimableObjects, 0);
+  await fixture.store.prune({ apply: true, keepRecent: 0 });
+  assert.equal(await exists(run.root), false);
+  assert.equal(await exists(first.engine.root), true);
+});
+
+test('retention removes abandoned incoming object copies after the grace window', async (t) => {
+  const fixture = await createFixture(t);
+  const set = await installSet(fixture, 'current');
+  await promoteSet(fixture, set);
+  const incoming = path.join(fixture.store.paths.objects, `.incoming-${'a'.repeat(64)}-123-${randomUUID()}`);
+  await mkdir(incoming);
+  await writeFile(path.join(incoming, 'incomplete.txt'), 'copy interrupted');
+  const preview = await fixture.store.prune({ minAgeMs: 0 });
+  assert.equal(preview.staleIncomingObjects, 1);
+  assert.equal(await exists(incoming), true);
+  await fixture.store.prune({ apply: true, minAgeMs: 0 });
+  assert.equal(await exists(incoming), false);
+  assert.equal((await fixture.store.readCurrentPointer()).generation, 1);
+});
