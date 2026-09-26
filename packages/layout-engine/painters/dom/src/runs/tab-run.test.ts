@@ -6,6 +6,7 @@ import {
   renderInlineTabRun,
   renderPositionedTabRun,
   underlineBorderForRun,
+  underlineOffsetFromLineTop,
 } from './tab-run.js';
 
 // A line with leading: lineHeight (24) exceeds ascent (12) + descent (4) by 8px.
@@ -37,6 +38,19 @@ const underlinedTab = (fontSize?: number): TabRun =>
 const plainTab = (): TabRun => ({ kind: 'tab', text: '\t', width: 48 });
 
 describe('tab underline alignment (SD-3330)', () => {
+  it('places underlined tabs near the measured baseline when fast remeasurement omits font metrics', () => {
+    const fastLine = { ...LINE, ascent: 0, descent: 0 };
+    const reference = underlineOffsetFromLineTop(LINE);
+    const fallback = underlineOffsetFromLineTop(fastLine, 16);
+
+    expect(fallback).toBeGreaterThan(LINE.lineHeight * 0.72);
+    expect(Math.abs(fallback - reference)).toBeLessThan(1);
+    expect(parseFloat(renderInlineTabRun(underlinedTab(16), fastLine, document, 0).style.height)).toBeCloseTo(fallback);
+    expect(
+      parseFloat(renderPositionedTabRun(underlinedTab(16), fastLine, document, 0, 0, 0).element.style.height),
+    ).toBeCloseTo(fallback);
+  });
+
   it('anchors the inline tab underline to the baseline region, not the line-box bottom', () => {
     const el = renderInlineTabRun(underlinedTab(), LINE, document, 0);
 

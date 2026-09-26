@@ -763,7 +763,12 @@ export const renderLine = ({
   }
 
   if (useLineUnderlineOverlay && underlineSpans.length > 0) {
-    renderUnderlineSpans(underlineSpans, underlineOffsetFromLineTop(line), el, runContext.doc);
+    const fallbackFontSize =
+      Math.max(
+        0,
+        ...runsForLine.map((run) => ('fontSize' in run && typeof run.fontSize === 'number' ? run.fontSize : 0)),
+      ) || 16;
+    renderUnderlineSpans(underlineSpans, underlineOffsetFromLineTop(line, fallbackFontSize), el, runContext.doc);
   }
 
   appendFormattingParagraphMark(

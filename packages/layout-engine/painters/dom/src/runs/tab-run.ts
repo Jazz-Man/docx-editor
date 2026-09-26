@@ -119,7 +119,7 @@ export const renderInlineTabRun = (
     // would put the border ~descent+half-leading below the text-decoration underline of
     // adjacent text and look broken (SD-3330), so the box ends at the computed underline
     // offset with its top pinned to the line-box top, landing the border at the baseline.
-    tabEl.style.height = `${underlineOffsetFromLineTop(line)}px`;
+    tabEl.style.height = `${underlineOffsetFromLineTop(line, getRunFontSize(run))}px`;
     tabEl.style.verticalAlign = 'top';
   } else {
     tabEl.style.height = `${line.lineHeight}px`;
@@ -188,7 +188,9 @@ export const renderPositionedTabRun = (
   // Underlined positioned tabs use the same computed offset as inline tabs, while
   // non-underlined positioned tabs keep the full line height and are hidden below.
   const shouldPaintUnderline = paintUnderline && canPaintUnderlineAsBorder(run);
-  tabEl.style.height = shouldPaintUnderline ? `${underlineOffsetFromLineTop(line)}px` : `${line.lineHeight}px`;
+  tabEl.style.height = shouldPaintUnderline
+    ? `${underlineOffsetFromLineTop(line, getRunFontSize(run))}px`
+    : `${line.lineHeight}px`;
   tabEl.style.display = 'inline-block';
   tabEl.style.pointerEvents = 'none';
   tabEl.style.zIndex = '1';
@@ -220,10 +222,16 @@ export const renderPositionedTabRun = (
  * scales with font size (capped by the descent). This is geometry derived from
  * the resolved line metrics. The painter never measures the DOM (SD-2957).
  */
-export const underlineOffsetFromLineTop = (line: Line): number => {
-  const halfLeading = Math.max(0, (line.lineHeight - line.ascent - line.descent) / 2);
-  const baselineFromTop = halfLeading + line.ascent;
-  const underlineGap = Math.min(line.descent, line.lineHeight * 0.08);
+export const underlineOffsetFromLineTop = (line: Line, fallbackFontSize = 16): number => {
+  // Fast remeasurement retains line height but intentionally omits ascent and descent.
+  // Its zero pair is missing data, not a baseline at the center of the line box.
+  const missingMetrics = line.ascent === 0 && line.descent === 0;
+  const fontSize = Number.isFinite(fallbackFontSize) && fallbackFontSize > 0 ? fallbackFontSize : 16;
+  const ascent = missingMetrics ? fontSize * 0.8 : line.ascent;
+  const descent = missingMetrics ? fontSize * 0.2 : line.descent;
+  const halfLeading = Math.max(0, (line.lineHeight - ascent - descent) / 2);
+  const baselineFromTop = halfLeading + ascent;
+  const underlineGap = Math.min(descent, line.lineHeight * 0.08);
   return baselineFromTop + underlineGap;
 };
 
