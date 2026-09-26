@@ -23,6 +23,11 @@ import { fileURLToPath } from 'node:url';
 import { auditSuperdocPackageArtifact } from '../../../scripts/audit-publish-artifact.mjs';
 import { withUncompressedTarball } from '../../../scripts/tarball-audit.mjs';
 import {
+  observeEngineInputIdentity,
+  readDeclaredEngineVersion,
+  verifyPreparedEngine,
+} from '../../../scripts/engine-prepared-input.mjs';
+import {
   hashPublicTree,
   readPublicOutputSelection,
   verifyPublicOutputReceipt,
@@ -31,7 +36,7 @@ import {
 const require = createRequire(import.meta.url);
 const { buildSanitizedPackManifest } = require('./sanitize-pack-manifest.cjs');
 
-export const PUBLIC_PACK_RECEIPT_SCHEMA = 'superdoc-public-pack-receipt.v1';
+export const PUBLIC_PACK_RECEIPT_SCHEMA = 'superdoc-public-pack-receipt.v2';
 
 const PACKAGE_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const PACKED_DIRECTORIES = Object.freeze(['dist', 'dist-cdn']);
@@ -148,7 +153,7 @@ export function normalizePackVersionOverride(versionOverride) {
   return versionOverride;
 }
 
-function createPackStage({ packageRoot, stageRoot, publicReceipt, surfaceRoots, readCatalog, versionOverride }) {
+function createPackStage({ packageRoot, stageRoot, publicReceipt, surfaceRoots, readCatalog, versionOverride, localOnly }) {
   mkdirSync(stageRoot, { recursive: false });
   for (const directory of PACKED_DIRECTORIES) {
     const surface = directory === 'dist' ? 'npm' : 'cdn';
@@ -168,6 +173,10 @@ function createPackStage({ packageRoot, stageRoot, publicReceipt, surfaceRoots, 
     catalog,
   });
   if (versionOverride) packedManifest.version = versionOverride;
+  if (localOnly) {
+    packedManifest.private = true;
+    delete packedManifest.publishConfig;
+  }
   writeFileSync(path.join(stageRoot, 'package.json'), `${JSON.stringify(packedManifest, null, 2)}\n`, { flag: 'wx' });
   assertStagedSurfaces(stageRoot, publicReceipt);
   return packedManifest;
@@ -324,6 +333,7 @@ export function readPublicPackReceipt({
   receiptPath = publicPackReceiptPath(packageRoot),
   tarballPath = path.join(packageRoot, 'superdoc.tgz'),
   expectedPublicReceiptDigest = null,
+  expectedLocalOnly = false,
 } = {}) {
   let receipt;
   try {
@@ -336,12 +346,15 @@ export function readPublicPackReceipt({
   }
   const { digest, ...unsigned } = receipt;
   if (digest !== sha256(canonicalJson(unsigned))) throw new Error('public pack receipt failed its self-digest check');
+  if (receipt.localOnly !== expectedLocalOnly) {
+    throw new Error(`public pack receipt local-only state does not match required ${expectedLocalOnly}`);
+  }
   if (expectedPublicReceiptDigest && receipt.publicProducerReceiptDigest !== expectedPublicReceiptDigest) {
     throw new Error('public pack receipt is bound to a different public producer receipt');
   }
   const bytes = readFileSync(tarballPath);
   if (receipt.tarball?.sha256 !== sha256(bytes) || receipt.tarball?.sizeBytes !== bytes.byteLength) {
-    throw new Error('superdoc.tgz does not match its public pack receipt');
+    throw new Error('SuperDoc tarball does not match its public pack receipt');
   }
   return receipt;
 }
@@ -362,6 +375,7 @@ export function packSealedPublicPackage({
   preparePromotion = null,
   readCatalog = readPnpmDefaultCatalog,
   versionOverride = env.SUPERDOC_PACK_VERSION_OVERRIDE ?? null,
+  localOnly = false,
 } = {}) {
   versionOverride = normalizePackVersionOverride(versionOverride);
   const sourceManifestPath = path.join(packageRoot, 'package.json');
@@ -378,6 +392,24 @@ export function packSealedPublicPackage({
   if (publicReceipt.digest !== selection.receipt.digest) {
     throw new Error('public output selection changed while the sealed pack was being verified');
   }
+  let engineProtection = null;
+  if (publicReceipt.engineInput?.mode === 'prepared' && existsSync(path.join(v2Root, 'package.json'))) {
+    const verified = verifyPreparedEngine({
+      v2Root,
+      expectedVersion: readDeclaredEngineVersion(packageRoot),
+      surfaces: ['dist', 'dist-cdn'],
+      expectedReceiptDigest: publicReceipt.engineInput.producerReceiptDigest,
+      currentInputIdentity: observeEngineInputIdentity({ v2Root }),
+      expectedBuildProfile: localOnly ? 'eval-fast' : 'canonical',
+    });
+    if (!localOnly && verified.receipt.protectionCache?.authoritativeForPublication !== true) {
+      throw new Error('sealed public publication requires an authoritative canonical engine');
+    }
+    engineProtection = {
+      buildProfile: verified.receipt.buildProfile,
+      authoritativeForPublication: verified.receipt.protectionCache?.authoritativeForPublication === true,
+    };
+  }
   checkpoint('after-receipt-verify', failAt);
 
   const temporaryRoot = mkdtempSync(path.join(os.tmpdir(), 'superdoc-sealed-pack-'));
@@ -391,6 +423,7 @@ export function packSealedPublicPackage({
       surfaceRoots: selection.surfaceRoots,
       readCatalog,
       versionOverride,
+      localOnly,
     });
     const stageMetadata = prepareStage
       ? prepareStage({ stageRoot, publicReceipt, selection, temporaryRoot })
@@ -409,6 +442,8 @@ export function packSealedPublicPackage({
       schema: PUBLIC_PACK_RECEIPT_SCHEMA,
       package: { name: packedManifest.name, version: packedManifest.version },
       publicProducerReceiptDigest: publicReceipt.digest,
+      localOnly,
+      engineProtection,
       derivation: stageMetadata?.packReceiptMetadata ?? null,
       packRoot: {
         digest: packRootTree.digest,
@@ -463,7 +498,13 @@ function isCliEntry() {
 
 if (isCliEntry()) {
   try {
-    const result = packSealedPublicPackage();
+    const localOnly = process.argv.slice(2).includes('--local-only');
+    if (process.argv.slice(2).some((arg) => arg !== '--local-only')) throw new Error('unknown pack-sealed option');
+    const result = packSealedPublicPackage(localOnly ? {
+      localOnly,
+      outputPath: path.join(PACKAGE_ROOT, 'superdoc-internal.tgz'),
+      packReceiptPath: path.join(PACKAGE_ROOT, 'build-receipts', 'public-pack-internal-receipt.json'),
+    } : {});
     console.log(`[pack-sealed] wrote ${result.outputPath}`);
     console.log(`[pack-sealed] receipt ${result.packReceiptPath} (${result.packReceipt.digest})`);
   } catch (error) {

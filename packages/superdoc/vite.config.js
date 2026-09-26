@@ -138,6 +138,10 @@ export const getAliases = (command, v2Resolution = getV2Resolution(command)) => 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode, command }) => {
   const v2Resolution = getV2Resolution(command);
+  const internalEsOnly = process.env.SUPERDOC_INTERNAL_ES_ONLY === '1';
+  if (internalEsOnly && (v2Resolution.mode !== 'source' || process.env.SUPERDOC_RELEASE_CANONICAL_REQUIRED === '1')) {
+    throw new Error('internal ES-only output requires Orbit source mode and cannot be used for publication');
+  }
   const npmOutDir = process.env.SUPERDOC_PUBLIC_NPM_OUT_DIR
     ? path.resolve(process.env.SUPERDOC_PUBLIC_NPM_OUT_DIR)
     : path.resolve(__dirname, 'dist');
@@ -150,7 +154,7 @@ export default defineConfig(({ mode, command }) => {
   if (disableTrackedChangeLoading) {
     console.warn('[superdoc] tracked-change loading: disabled for this dev server');
   }
-  const skipDts = process.env.SUPERDOC_SKIP_DTS === '1';
+  const skipDts = internalEsOnly || process.env.SUPERDOC_SKIP_DTS === '1';
   const stringDecoderEntry = stdlibRequire.resolve('string_decoder/lib/string_decoder.js');
   const plugins = [
     headlessImportGuardPlugin(v2Resolution.mode),
@@ -282,7 +286,7 @@ export default defineConfig(({ mode, command }) => {
       minify: false,
       sourcemap: false,
       rollupOptions: {
-        input: {
+        input: internalEsOnly ? { 'superdoc': 'src/index.js' } : {
           'superdoc': 'src/index.js',
           // v2-native public UI controller + framework bindings. Emitted as
           // their own bundles so `superdoc/ui`, `superdoc/ui/react`, and
@@ -328,7 +332,7 @@ export default defineConfig(({ mode, command }) => {
               if (id.includes('blank.docx')) return 'blank-docx';
             }
           },
-          {
+          ...(!internalEsOnly ? [{
             format: 'cjs',
             entryFileNames: '[name].cjs',
             chunkFileNames: 'chunks/[name]-[hash].cjs',
@@ -340,7 +344,7 @@ export default defineConfig(({ mode, command }) => {
               if (id.includes('/node_modules/xml-js/')) return 'xml-js';
               if (id.includes('blank.docx')) return 'blank-docx';
             }
-          }
+          }] : [])
         ],
       }
     },

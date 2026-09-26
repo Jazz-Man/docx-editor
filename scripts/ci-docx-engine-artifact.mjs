@@ -219,6 +219,7 @@ export function packEngine({
   root = archiveRoot,
   run = runChecked,
   checkpoint = () => {},
+  expectedBuildProfile,
 } = {}) {
   if (!existsSync(path.join(v2Root, 'package.json'))) {
     rmSync(root, { recursive: true, force: true });
@@ -248,6 +249,7 @@ export function packEngine({
       expectedVersion: manifest.version,
       surfaces: ['dist', 'dist-cdn'],
       currentInputIdentity: observeEngineInputIdentity({ v2Root }),
+      ...(expectedBuildProfile ? { expectedBuildProfile } : {}),
     });
     const written = writeEngineConsumerArtifactReceipt({ root: nextRoot, engineArchive, verifiedEngine });
     verifyEngineConsumerArtifact({ root: nextRoot, expectedProducerReceiptDigest: verifiedEngine.receipt.digest });

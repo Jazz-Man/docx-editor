@@ -43,7 +43,7 @@ function git(repoRoot, args) {
   return execFileSync('git', ['-C', repoRoot, ...args], { encoding: 'utf8' }).trim();
 }
 
-function createFixture() {
+function createFixture(buildProfile = 'canonical') {
   const repoRoot = mkdtempSync(path.join(os.tmpdir(), 'public-receipt-test-'));
   const packageRoot = path.join(repoRoot, 'superdoc', 'public', 'packages', 'superdoc');
   const v2Root = path.join(repoRoot, 'superdoc', 'v2');
@@ -75,7 +75,9 @@ function createFixture() {
   writeJson(path.join(engineDist, 'manifest.json'), {
     schemaVersion: 1,
     packageName: '@superdoc/docx-engine',
-    protection: { obfuscatedSetSha256: 'protected' },
+    protection: buildProfile === 'eval-fast'
+      ? { contentSetSha256: 'local-only' }
+      : { obfuscatedSetSha256: 'protected' },
     files: [{ path: 'docx-engine.es.js', sha256: sha256(engineSource) }],
   });
   const engineTree = hashEngineTree(engineDist);
@@ -83,8 +85,9 @@ function createFixture() {
     v2Root,
     receipt: {
       engineVersion: '0.1.0',
+      buildProfile,
       inputIdentity: observeEngineInputIdentity({ v2Root, repoRoot }),
-      protectionCache: { authoritativeForPublication: true },
+      protectionCache: { authoritativeForPublication: buildProfile === 'canonical' },
       surfaces: {
         dist: { digest: engineTree.digest, fileCount: engineTree.files.length, sizeBytes: engineTree.sizeBytes },
       },
@@ -99,7 +102,7 @@ function createFixture() {
     packageRoot,
     v2Root,
     surfaces: ['npm', 'cdn'],
-    env: PACKAGE_ENV,
+    env: { ...PACKAGE_ENV, SUPERDOC_EVAL_FAST_BUILD: buildProfile === 'eval-fast' ? '1' : '0' },
   });
   return { repoRoot, packageRoot, v2Root, written };
 }
@@ -180,6 +183,27 @@ describe('public output producer receipt', () => {
           env: PACKAGE_ENV,
         }),
       ).toThrow(/tree changed after it was sealed/u);
+    } finally {
+      rmSync(fixture.repoRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('verifies a local fast public receipt using the passed build environment', () => {
+    const fixture = createFixture('eval-fast');
+    try {
+      const fastEnvironment = { ...PACKAGE_ENV, SUPERDOC_EVAL_FAST_BUILD: '1' };
+      expect(verifyPublicOutputReceipt({
+        packageRoot: fixture.packageRoot,
+        v2Root: fixture.v2Root,
+        requiredSurfaces: ['npm'],
+        env: fastEnvironment,
+      }).digest).toBe(fixture.written.receipt.digest);
+      expect(() => verifyPublicOutputReceipt({
+        packageRoot: fixture.packageRoot,
+        v2Root: fixture.v2Root,
+        requiredSurfaces: ['npm'],
+        env: { ...fastEnvironment, SUPERDOC_EVAL_FAST_BUILD: '0' },
+      })).toThrow(/build profile eval-fast does not match required profile canonical/u);
     } finally {
       rmSync(fixture.repoRoot, { recursive: true, force: true });
     }

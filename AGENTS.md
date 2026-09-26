@@ -8,6 +8,10 @@ Run `pnpm` scripts from this directory, the one holding `pnpm-workspace.yaml`.
 In an Orbit checkout that is `superdoc/public`, not the Orbit root, which does
 not define them.
 
+For local `.tgz` work in Orbit, use the root internal pack route in
+[SuperDoc build profiles](../../docs/superdoc-build-profiles.md). Its staged
+manifest is private; publication must use the canonical release route.
+
 When extending a built-in UI controller, follow the naming, configuration, and
 runtime-control conventions in `packages/superdoc/src/public/ui/README.md`.
 

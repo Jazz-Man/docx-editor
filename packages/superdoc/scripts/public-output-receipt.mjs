@@ -611,6 +611,7 @@ export function observePublicEngineInput({ packageRoot, v2Root, env = process.en
       surfaces: ['dist'],
       expectedReceiptDigest,
       currentInputIdentity: observeEngineInputIdentity({ v2Root }),
+      expectedBuildProfile: env.SUPERDOC_EVAL_FAST_BUILD === '1' ? 'eval-fast' : 'canonical',
     });
     identity = {
       mode: 'prepared',

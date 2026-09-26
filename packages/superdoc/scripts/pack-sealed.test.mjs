@@ -216,6 +216,38 @@ describe('sealed public packing', () => {
     }
   });
 
+  it('marks internal packs private and rejects them at a publication receipt read', () => {
+    const fixture = createFixture();
+    const observed = {};
+    try {
+      const sourceBefore = readFileSync(path.join(fixture.packageRoot, 'package.json'));
+      const result = packSealedPublicPackage({
+        packageRoot: fixture.packageRoot,
+        outputPath: fixture.outputPath,
+        packReceiptPath: fixture.packReceiptPath,
+        localOnly: true,
+        ...dependencies(fixture, observed),
+      });
+      expect(observed.stageManifest.private).toBe(true);
+      expect(observed.stageManifest.publishConfig).toBeUndefined();
+      expect(readFileSync(path.join(fixture.packageRoot, 'package.json'))).toEqual(sourceBefore);
+      expect(result.packReceipt.localOnly).toBe(true);
+      expect(() => readPublicPackReceipt({
+        packageRoot: fixture.packageRoot,
+        receiptPath: result.packReceiptPath,
+        tarballPath: result.outputPath,
+      })).toThrow(/local-only state/u);
+      expect(readPublicPackReceipt({
+        packageRoot: fixture.packageRoot,
+        receiptPath: result.packReceiptPath,
+        tarballPath: result.outputPath,
+        expectedLocalOnly: true,
+      }).localOnly).toBe(true);
+    } finally {
+      rmSync(fixture.root, { recursive: true, force: true });
+    }
+  });
+
   it('applies a validated version override only inside the ephemeral pack stage', () => {
     const fixture = createFixture();
     const observed = {};
