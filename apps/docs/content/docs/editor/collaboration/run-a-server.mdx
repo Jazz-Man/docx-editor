@@ -53,6 +53,8 @@ The minimal server deliberately has no authentication or durable storage. Before
 
 ### Coordinate initialization and retries
 
+Follow [create a room safely from your backend](/editor/collaboration/coordinate-room-creation) for a step-by-step setup and error-handling guide.
+
 If initialization stops partway through, do not let multiple clients independently retry `create`. For automatic recovery, your server needs an authoritative, durable record of the document's source revision, current room ID, initialization state, and attempt number. Use it to:
 
 1. Reserve one initializer for a document and source revision; give only that attempt permission to write the initializing room. A second request waits rather than becoming another creator.

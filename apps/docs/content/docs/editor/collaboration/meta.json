@@ -6,6 +6,7 @@
     "connect-two-editors",
     "presence-and-awareness",
     "initialize-a-document",
+    "coordinate-room-creation",
     "save-and-restore-a-room",
     "control-room-access",
     "run-a-server",

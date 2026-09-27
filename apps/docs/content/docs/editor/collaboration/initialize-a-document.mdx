@@ -17,6 +17,8 @@ Start with the [local two-editor example](/editor/collaboration/connect-two-edit
 
 `create` is not “open or create.” It fails if the room already exists. `join` does not initialize a missing room from the supplied file.
 
+If several backend workers or browsers could create the same room, follow [coordinate room creation](/editor/collaboration/coordinate-room-creation) before enabling them. The SDK cannot reserve a room on your collaboration server.
+
 ### Recover an interrupted initialization
 
 A `create` attempt can stop after writing only part of a room. A later `join` may report that initialization is still in progress or has stalled. Do not treat that result as permission for several browsers or workers to retry `create` together. SuperDoc can refuse a partial room without writing to it, but the collaboration provider does not give SuperDoc an exclusive, server-authorized initializer.

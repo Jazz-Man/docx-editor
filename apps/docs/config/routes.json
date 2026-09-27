@@ -526,6 +526,7 @@
     "/editor/collaboration/",
     "/editor/collaboration/connect-two-editors/",
     "/editor/collaboration/control-room-access/",
+    "/editor/collaboration/coordinate-room-creation/",
     "/editor/collaboration/initialize-a-document/",
     "/editor/collaboration/presence-and-awareness/",
     "/editor/collaboration/run-a-server/",

@@ -1,0 +1,37 @@
+---
+title: Create a room safely from your backend
+navTitle: Coordinate room creation
+description: Let one backend worker import a DOCX, then let everyone else join the completed room.
+---
+
+If two workers open the same new room with `roomMode: 'create'`, both can start importing the DOCX before either sees the other's work. The room can then contain duplicated content. SuperDoc checks the room state it receives, but a WebSocket connection does not reserve a room for one creator.
+
+Your backend chooses the creator. Your collaboration server decides which writes may enter the room. Both need to use the same decision when workers run on different machines.
+
+## Keep one creator
+
+1. In a shared database, keep one record per logical document. Store its source DOCX revision, room ID, state (`initializing` or `ready`), and attempt number. Reserve the first attempt with an atomic insert or transaction. Other requests for that document wait for its result. They do not call `create`.
+2. Give the winning worker a credential containing the room ID and attempt number. Make the collaboration server verify it. While the room is `initializing`, allow document writes only from that attempt. Check **each incoming write**, including writes sent during initial synchronization. A check only when the connection opens cannot stop an old connection after a retry takes over.
+3. The winner opens the DOCX with the [Node SDK](/agents/automation/node-sdk) and explicit `roomMode: 'create'`. Keep editors out of the room during this step. A later request that sees `initializing` waits; a request that sees `ready` uses `roomMode: 'join'`.
+4. After `create` returns, connect a fresh reader to the room and check that it can join and read the complete document. Wait for your collaboration server to confirm that it stored the room's Yjs state. Then mark the room `ready` and let editors join. A SuperDoc ready event or provider sync event does not confirm durable storage.
+
+The database reservation must be shared by **all** processes that can start an import, including any browser fallback. If you run several collaboration-server instances, they need one authoritative room owner or a shared atomic write-admission boundary.
+
+For Hocuspocus 4, [`onAuthenticate` and `beforeHandleMessage`](https://tiptap.dev/docs/hocuspocus/server/hooks) provide connection and pre-apply message hooks. Bind the authenticated connection to the reserved attempt, then check the current attempt before admitting each document message. Test that your hook also covers initial sync writes. Hook behavior differs by provider and version.
+
+## Handle failures without resetting edits
+
+| What you observe                                                            | What your application should do                                                                                        |
+| --------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| Another worker owns `initializing`                                          | Wait for that attempt. Do not start another `create`.                                                                  |
+| SuperDoc reports `COLLABORATION_ROOM_ALREADY_EXISTS`                        | Read your backend's room record. Join only when it says `ready`.                                                       |
+| SuperDoc reports `COLLABORATION_ROOM_INITIALIZING` or an unknown open error | Treat the room as possibly partial. Inspect the authoritative room state before retrying.                              |
+| An initializer stops halfway                                                | Reject and drain its remaining writes before assigning a new attempt. Inspect the room before deciding how to recover. |
+
+Each Node SDK `create` open has a new attempt identity. A later SDK open cannot resume the previous attempt in a pending room. If the incomplete room was never available to editors, keep it for investigation and initialize a **new room ID** from the retained source DOCX. Publish the replacement only after a fresh join and a storage confirmation. If users may have edited the old room, recover its authoritative Yjs state. Do not replace their edits with the original DOCX.
+
+A browser `create` retry can resume an expired pending room when it has the same source DOCX and the room contains only complete content units or empty containers awaiting their first write. This is a recovery path, not a server lock. Before allowing the retry, your server must stop writes from the old attempt; otherwise that connection could return and write into the same room. If SuperDoc reports that the room is stalled, inspect it and use the new-room recovery path above.
+
+An expiring lock alone is insufficient: its old holder may still have an open socket. A `join`-then-`create` check also leaves a gap where another worker can create the room. Test simultaneous requests, a delayed old worker, a disconnect during import, restart and restore, and a room with existing edits before enabling automatic retries.
+
+See [save and restore a room](/editor/collaboration/save-and-restore-a-room) for Yjs persistence and [run a collaboration server](/editor/collaboration/run-a-server) for server setup.
