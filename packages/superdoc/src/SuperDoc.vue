@@ -2337,10 +2337,22 @@ const editorOptions = (doc) => {
     // passes the array into createV2EditorHost. Legacy v1 `editorExtensions`
     // (above) are not v2 extensions and are ignored by the v2 runtime.
     extensions: proxy.$superdoc.config.extensions || [],
-    // PDF.js stays an optional public-shell dependency. When configured, V2
-    // lends the module lazily to the narrow PDF-in-EMF rendition strategy;
-    // the private document engine never imports or bundles PDF.js itself.
-    ...(pdfConfig?.pdfLib ? { pdfLib: pdfConfig.pdfLib } : {}),
+    // The embedded-PDF EMF strategy loads PDF.js only when a document needs it.
+    // An explicitly configured module keeps the caller's worker setup.
+    ...(pdfConfig?.pdfLib
+      ? { pdfLib: pdfConfig.pdfLib }
+      : typeof __SUPERDOC_BUILD__ !== 'undefined' && __SUPERDOC_BUILD__ === 'cdn-iife'
+        ? {}
+        : {
+            loadPdfJs: async () => {
+              const [pdfJs, worker] = await Promise.all([
+                import('pdfjs-dist/build/pdf.mjs'),
+                import('pdfjs-dist/build/pdf.worker.min.mjs?url'),
+              ]);
+              pdfJs.GlobalWorkerOptions.workerSrc = worker.default;
+              return pdfJs;
+            },
+          }),
     suppressDefaultDocxStyles: proxy.$superdoc.config.suppressDefaultDocxStyles,
     // The profile can forbid the surface, but it is not the live state:
     // `setDisableContextMenu()` writes `config.disableContextMenu` after

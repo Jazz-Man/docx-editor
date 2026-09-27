@@ -134,6 +134,7 @@
     "jsdom": "catalog:",
     "konva": "catalog:",
     "pinia": "catalog:",
+    "pdfjs-dist": "catalog:",
     "uuid": "catalog:",
     "vue": "^3.5.11",
     "y-websocket": "catalog:"
@@ -182,7 +183,6 @@
     "jszip": "catalog:",
     "node-stdlib-browser": "catalog:",
     "nodemon": "catalog:",
-    "pdfjs-dist": "catalog:",
     "postcss-nested": "catalog:",
     "postcss-prefixwrap": "catalog:",
     "rollup-plugin-copy": "catalog:",

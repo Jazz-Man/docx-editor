@@ -1076,6 +1076,9 @@ importers:
       konva:
         specifier: 'catalog:'
         version: 10.2.5
+      pdfjs-dist:
+        specifier: 'catalog:'
+        version: 5.5.207
       pinia:
         specifier: 'catalog:'
         version: 3.0.4(typescript@5.9.3)(vue@3.5.32(typescript@5.9.3))
@@ -1158,9 +1161,6 @@ importers:
       nodemon:
         specifier: 'catalog:'
         version: 3.1.14
-      pdfjs-dist:
-        specifier: 'catalog:'
-        version: 5.5.207
       postcss-nested:
         specifier: 'catalog:'
         version: 6.2.0(postcss@8.5.22)
