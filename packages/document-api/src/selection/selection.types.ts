@@ -1,5 +1,66 @@
 import type { SelectionTarget, TextTarget } from '../types/address.js';
 
+export interface SelectionTableCellsTarget {
+  kind: 'tableCells';
+  tableId: string;
+  start: { rowIndex: number; columnIndex: number };
+  end: { rowIndex: number; columnIndex: number };
+  story?: SelectionTarget['story'];
+}
+
+export type SelectionExtractOoxmlInput =
+  | { at: SelectionTarget | SelectionTableCellsTarget; selection?: never }
+  | { selection: 'current'; at?: never };
+
+export interface SelectionOoxmlDependency {
+  sourcePartUri: string;
+  relationshipId: string;
+  relationshipType: string;
+  target: string;
+  targetMode: 'Internal' | 'External';
+  contentType: string | null;
+  /** Base64-encoded target part when the relationship is internal. */
+  dataBase64?: string;
+}
+
+export interface SelectionExtractOoxmlResult {
+  /** Version of the serialized selection-capture manifest. */
+  formatVersion: 1;
+  at: SelectionTarget | SelectionTableCellsTarget;
+  /** Source revision for provenance, never a read precondition. */
+  evaluatedRevision: string;
+  fragment: {
+    placement: 'inline' | 'blocks' | 'table';
+    /** Selected WordprocessingML with enough structural wrappers for its placement. */
+    xml: string;
+    /** Namespace bindings needed to parse the selected fragment. */
+    namespaces: Record<string, string>;
+    /** Source grid positions for a whole-table or rectangular-cell capture. */
+    table?: {
+      tableId: string;
+      gridColumnCount: number;
+      cells: { rowIndex: number; columnIndex: number; gridSpan: number; vMerge: 'none' | 'restart' | 'continue' }[];
+    };
+  };
+  source: {
+    story: SelectionTarget['story'] | null;
+    partUri: string;
+    paragraphStyleId: string | null;
+  };
+  /** Source structure outside the selected visible content needed to interpret it. */
+  context: {
+    xml: string[];
+    tableMerges?: {
+      selectedRowIndex: number;
+      columnIndex: number;
+      restartRowIndex: number;
+      restartCellPropertiesXml: string;
+    }[];
+  };
+  dependencies: SelectionOoxmlDependency[];
+  diagnostics: { code: string; message: string }[];
+}
+
 /**
  * Input for `selection.current`: reads the editor's current selection.
  *

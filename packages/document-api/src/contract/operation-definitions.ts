@@ -3017,6 +3017,29 @@ export const OPERATION_DEFINITIONS = {
     referenceDocPath: 'selection/current.mdx',
     referenceGroup: 'selection',
   },
+  'selection.extractOoxml': {
+    memberPath: 'selection.extractOoxml',
+    description:
+      'Capture a nonempty current or addressed selection as OOXML with its structure, context, and package dependencies.',
+    expectedResult:
+      'Returns the selected OOXML, structural placement, source provenance, and required relationships and parts without changing the document.',
+    requiresDocumentContext: true,
+    metadata: readOperation({
+      idempotency: 'idempotent',
+      throws: [
+        'INVALID_INPUT',
+        'INVALID_TARGET',
+        'TARGET_NOT_FOUND',
+        'INVALID_CONTEXT',
+        'AMBIGUOUS_MATCH',
+        'PRECONDITION_FAILED',
+        'RESOURCE_LIMIT',
+      ],
+      deterministicTargetResolution: true,
+    }),
+    referenceDocPath: 'selection/extract-ooxml.mdx',
+    referenceGroup: 'selection',
+  },
   'mutations.preview': {
     memberPath: 'mutations.preview',
     description: 'Dry-run a mutation plan, returning resolved targets without applying changes.',

@@ -7618,6 +7618,141 @@ const operationSchemas: Record<OperationId, OperationSchemaSet> = {
           ['empty', 'target', 'activeMarks', 'activeCommentIds', 'activeChangeIds'],
         ),
       },
+      'selection.extractOoxml': {
+        input: {
+          oneOf: [
+            objectSchema(
+              {
+                at: {
+                  oneOf: [
+                    selectionTargetSchema,
+                    objectSchema(
+                      {
+                        kind: { const: 'tableCells' },
+                        tableId: { type: 'string', minLength: 1 },
+                        start: objectSchema(
+                          { rowIndex: { type: 'integer', minimum: 0 }, columnIndex: { type: 'integer', minimum: 0 } },
+                          ['rowIndex', 'columnIndex'],
+                        ),
+                        end: objectSchema(
+                          { rowIndex: { type: 'integer', minimum: 0 }, columnIndex: { type: 'integer', minimum: 0 } },
+                          ['rowIndex', 'columnIndex'],
+                        ),
+                        story: storyLocatorSchema,
+                      },
+                      ['kind', 'tableId', 'start', 'end'],
+                    ),
+                  ],
+                },
+              },
+              ['at'],
+            ),
+            objectSchema({ selection: { const: 'current' } }, ['selection']),
+          ],
+        },
+        output: objectSchema(
+          {
+            formatVersion: { const: 1 },
+            at: {
+              oneOf: [
+                selectionTargetSchema,
+                objectSchema(
+                  {
+                    kind: { const: 'tableCells' },
+                    tableId: { type: 'string' },
+                    start: objectSchema({ rowIndex: { type: 'integer' }, columnIndex: { type: 'integer' } }, [
+                      'rowIndex',
+                      'columnIndex',
+                    ]),
+                    end: objectSchema({ rowIndex: { type: 'integer' }, columnIndex: { type: 'integer' } }, [
+                      'rowIndex',
+                      'columnIndex',
+                    ]),
+                    story: storyLocatorSchema,
+                  },
+                  ['kind', 'tableId', 'start', 'end'],
+                ),
+              ],
+            },
+            evaluatedRevision: { type: 'string' },
+            fragment: objectSchema(
+              {
+                placement: { enum: ['inline', 'blocks', 'table'] },
+                xml: { type: 'string' },
+                namespaces: { type: 'object', additionalProperties: { type: 'string' } },
+                table: objectSchema(
+                  {
+                    tableId: { type: 'string' },
+                    gridColumnCount: { type: 'integer' },
+                    cells: arraySchema(
+                      objectSchema(
+                        {
+                          rowIndex: { type: 'integer' },
+                          columnIndex: { type: 'integer' },
+                          gridSpan: { type: 'integer' },
+                          vMerge: { enum: ['none', 'restart', 'continue'] },
+                        },
+                        ['rowIndex', 'columnIndex', 'gridSpan', 'vMerge'],
+                      ),
+                    ),
+                  },
+                  ['tableId', 'gridColumnCount', 'cells'],
+                ),
+              },
+              ['placement', 'xml', 'namespaces'],
+            ),
+            source: objectSchema(
+              {
+                story: { oneOf: [storyLocatorSchema, { type: 'null' }] },
+                partUri: { type: 'string' },
+                paragraphStyleId: { oneOf: [{ type: 'string' }, { type: 'null' }] },
+              },
+              ['story', 'partUri', 'paragraphStyleId'],
+            ),
+            context: objectSchema(
+              {
+                xml: arraySchema({ type: 'string' }),
+                tableMerges: arraySchema(
+                  objectSchema(
+                    {
+                      selectedRowIndex: { type: 'integer' },
+                      columnIndex: { type: 'integer' },
+                      restartRowIndex: { type: 'integer' },
+                      restartCellPropertiesXml: { type: 'string' },
+                    },
+                    ['selectedRowIndex', 'columnIndex', 'restartRowIndex', 'restartCellPropertiesXml'],
+                  ),
+                ),
+              },
+              ['xml'],
+            ),
+            dependencies: arraySchema(
+              objectSchema(
+                {
+                  sourcePartUri: { type: 'string' },
+                  relationshipId: { type: 'string' },
+                  relationshipType: { type: 'string' },
+                  target: { type: 'string' },
+                  targetMode: { enum: ['Internal', 'External'] },
+                  contentType: { oneOf: [{ type: 'string' }, { type: 'null' }] },
+                  dataBase64: { type: 'string' },
+                },
+                ['sourcePartUri', 'relationshipId', 'relationshipType', 'target', 'targetMode', 'contentType'],
+              ),
+            ),
+            diagnostics: arraySchema(
+              objectSchema(
+                {
+                  code: { type: 'string' },
+                  message: { type: 'string' },
+                },
+                ['code', 'message'],
+              ),
+            ),
+          },
+          ['formatVersion', 'at', 'evaluatedRevision', 'fragment', 'source', 'context', 'dependencies', 'diagnostics'],
+        ),
+      },
       'mutations.preview': {
         input: mutationsPreviewInputSchema,
         output: objectSchema(

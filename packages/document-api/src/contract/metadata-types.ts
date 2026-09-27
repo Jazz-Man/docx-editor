@@ -49,6 +49,7 @@ export const PRE_APPLY_THROW_CODES = [
   'STORY_NOT_SUPPORTED',
   'CROSS_STORY_PLAN',
   'MATERIALIZATION_FAILED',
+  'RESOURCE_LIMIT',
 ] as const;
 
 export type PreApplyThrowCode = (typeof PRE_APPLY_THROW_CODES)[number];

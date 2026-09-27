@@ -32,8 +32,17 @@ export type {
   ScrollIntoViewOutput,
 } from './ranges/index.js';
 export { executeResolveRange } from './ranges/index.js';
-export type { SelectionApi, SelectionAdapter, SelectionCurrentInput, SelectionInfo } from './selection/selection.js';
-export { executeSelectionCurrent } from './selection/selection.js';
+export type {
+  SelectionApi,
+  SelectionAdapter,
+  SelectionCurrentInput,
+  SelectionExtractOoxmlInput,
+  SelectionExtractOoxmlResult,
+  SelectionOoxmlDependency,
+  SelectionTableCellsTarget,
+  SelectionInfo,
+} from './selection/selection.js';
+export { executeSelectionCurrent, executeSelectionExtractOoxml } from './selection/selection.js';
 export type { HeaderFootersAdapter, HeaderFootersApi } from './header-footers/header-footers.js';
 export * from './header-footers/header-footers.types.js';
 export type { WatermarksAdapter, WatermarksApi } from './watermarks/watermarks.js';
@@ -173,8 +182,15 @@ import type { InsertInput } from './insert/insert.js';
 import { executeDelete } from './delete/delete.js';
 import { executeResolveRange } from './ranges/resolve.js';
 import type { RangeResolverAdapter, ResolveRangeInput, ResolveRangeOutput } from './ranges/ranges.types.js';
-import { executeSelectionCurrent } from './selection/selection.js';
-import type { SelectionApi, SelectionAdapter, SelectionCurrentInput, SelectionInfo } from './selection/selection.js';
+import { executeSelectionCurrent, executeSelectionExtractOoxml } from './selection/selection.js';
+import type {
+  SelectionApi,
+  SelectionAdapter,
+  SelectionCurrentInput,
+  SelectionExtractOoxmlInput,
+  SelectionExtractOoxmlResult,
+  SelectionInfo,
+} from './selection/selection.js';
 import { executeInsert } from './insert/insert.js';
 import type { ListsAdapter, ListsApi } from './lists/lists.js';
 import type {
@@ -3782,6 +3798,13 @@ export function createDocumentApi(adapters: DocumentApiAdapters): DocumentApi {
           );
         }
         return executeSelectionCurrent(adapter, input);
+      },
+      extractOoxml(input: SelectionExtractOoxmlInput): SelectionExtractOoxmlResult {
+        const adapter = adapters.selection;
+        if (!adapter) {
+          throw new DocumentApiValidationError('SELECTION_ADAPTER_UNAVAILABLE', 'No selection adapter was registered.');
+        }
+        return executeSelectionExtractOoxml(adapter, input);
       },
     },
     mutations: {

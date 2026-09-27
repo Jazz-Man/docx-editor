@@ -1,0 +1,77 @@
+---
+title: Capture a selection as Word XML
+navTitle: Capture selection as OOXML
+description: Save the selected content and the DOCX parts it needs from an open document.
+---
+
+Use `doc.selection.extractOoxml()` when your application needs a copy of part of a document in Word's XML format (OOXML). For example, you can save a selected clause for later review or pass its original Word markup to another document workflow. The result includes the selected content and the supporting DOCX parts it refers to, such as images, styles, numbering, and hyperlinks.
+
+This is a read operation. It does not change the open document or create an undo step.
+
+## Capture what the user selected
+
+With a mounted v2 editor, call the API while the user's selection is still active. `superdoc` below is your existing `SuperDoc` instance; see the [Editor quickstart](/editor/quickstart) to create one.
+
+```ts
+async function captureSelection() {
+  const doc = superdoc.activeEditor?.doc;
+  if (!doc) throw new Error('The active document is unavailable.');
+
+  const capture = await doc.selection.extractOoxml({ selection: 'current' });
+  const savedCapture = JSON.stringify(capture);
+  return savedCapture;
+}
+```
+
+Call `captureSelection()` before opening a dialog or moving focus away from the editor. Keep the **whole** result when saving it: `fragment.xml` alone does not contain every supporting part needed to interpret the selection. The call requires a nonempty selection.
+
+Selections can include part of a paragraph, multiple paragraphs, lists, tables, and content in a table cell, header, or footer. The capture also preserves relevant markup for hyperlinks, fields, drawings, notes, comments, tracked changes, and content controls.
+
+## Capture a saved location
+
+You can pass a selection address with `at` instead of reading the live editor selection. This also works in a headless document workflow:
+
+```ts
+const capture = await doc.selection.extractOoxml({ at: savedSelection });
+```
+
+`savedSelection` is a `SelectionTarget` previously obtained from the Document API. The call reads the content **currently at that address**. Edits elsewhere do not invalidate the address solely because the document revision changed; the address still needs to resolve in the current document.
+
+For an explicitly addressed rectangle of table cells, pass the table ID and zero-based cell coordinates:
+
+```ts
+const capture = await doc.selection.extractOoxml({
+  at: {
+    kind: 'tableCells',
+    tableId,
+    start: { rowIndex: 0, columnIndex: 0 },
+    end: { rowIndex: 2, columnIndex: 1 },
+  },
+});
+```
+
+Here `tableId` is the ID of the table in the document. The start and end cells are included.
+
+## Read the result
+
+| Field                 | What it contains                                                                                                    |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `fragment.xml`        | The selected Word XML. Text at the edges is clipped to the selection.                                               |
+| `fragment.placement`  | Where the XML belongs: `inline`, `blocks`, or `table`.                                                              |
+| `fragment.namespaces` | XML namespace bindings needed to parse the fragment.                                                                |
+| `context`             | Surrounding structure needed to interpret the selection, without adding more selected visible content.              |
+| `dependencies`        | Referenced DOCX relationships and parts. Internal parts include Base64 bytes; external links keep their target URL. |
+| `at` and `source`     | The selection address and its source document part or story.                                                        |
+| `formatVersion`       | The version of this saved result shape. Currently `1`.                                                              |
+
+Table captures also include `fragment.table`, which describes the selected cells, grid positions, spans, and vertical merges. `context.tableMerges` supplies merge information from above the selected rows when needed, without including those cells' visible content.
+
+`evaluatedRevision` tells you which document revision was read. It is information about the capture, not a requirement for a later read. The API has no `expectedRevision` input.
+
+## Using the captured XML later
+
+The result is a capture, not a DOCX file or an insertion command. If your application later inserts it into a document, that operation must support its `fragment.placement` and remap any `dependencies`. The existing `contentControls.replaceContent({ format: 'ooxml' })` operation supports inline content, so it cannot restore every possible capture, such as a multi-paragraph or table selection.
+
+An empty selection, an address that no longer resolves, or invalid source data produces a structured validation error. Captures above the resource limits fail with `RESOURCE_LIMIT` and return no partial result: one referenced part can be at most 64 MiB, encoded dependency source bytes can total at most 128 MiB, and a capture can include at most 1,024 relationships.
+
+See the [generated `selection.extractOoxml` reference](/document-api/reference/selection/extract-ooxml) for the complete input, result, and error types.
