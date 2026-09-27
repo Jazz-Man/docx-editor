@@ -6925,6 +6925,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
   // `viewport.observe`. Without it, slices like contentControls never tick
   // after a programmatic mutation (e.g. `metadata.attach`), so consumer UI that
   // re-lists on slice change would stay stale.
+  let scheduleActiveSearchRefresh = (): void => {};
   const syncHostEventsSubscription = (): void => {
     const editor = getEditor();
     const host = editor?.host as LooseRecord | undefined;
@@ -6946,6 +6947,15 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       const off = next.subscribe((event: LooseRecord) => {
         const type = event?.type;
         const isStandaloneDocumentMutation = type === 'document:mutated' && event.hasCommitEvent !== true;
+        if (
+          isStandaloneDocumentMutation ||
+          (type === 'mutation:committed' && mutationCommittedEventChangedDocument(event)) ||
+          (type === 'collaboration:remote-changed' &&
+            Array.isArray(event.changedStoryIds) &&
+            event.changedStoryIds.length > 0)
+        ) {
+          scheduleActiveSearchRefresh();
+        }
         // `document:mutated` covers every committed family, including the
         // non-receipt Document API results that never emit
         // `mutation:committed`. The receipt event stays as a fallback for
@@ -11525,6 +11535,13 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
    * session is the one that says how to close it.
    */
   let releaseActiveSearchSession: (() => void) | null = null;
+  let releaseRefreshShellSearch: (() => void) | null = null;
+
+  const cancelRefreshShellSearch = (): void => {
+    const release = releaseRefreshShellSearch;
+    releaseRefreshShellSearch = null;
+    if (release) safeCall<unknown>(() => release(), null);
+  };
 
   /** Release whatever session is open, then forget it. */
   const releaseSearchSession = (): void => {
@@ -11558,6 +11575,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     searchRequestGeneration += 1;
     pendingFallbackGeneration = null;
     shellFallbackOutstanding = false;
+    cancelRefreshShellSearch();
     releaseSearchSession();
     const available = searchIsAvailable();
     searchState = {
@@ -11792,6 +11810,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       // Invalidate in-flight async queries so a late result cannot write into
       // the closed session.
       searchRequestGeneration += 1;
+      cancelRefreshShellSearch();
       if (releaseActiveSearchSession) {
         // Prefer what the session recorded about itself. Re-deriving from the
         // current facade cleared the host twice and never reached a fallback
@@ -11821,6 +11840,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       const includeDeletedText = (options?.includeTrackedDeletions ?? options?.includeDeletedText) === true;
       const regex = options?.regex === true;
       const generation = ++searchRequestGeneration;
+      cancelRefreshShellSearch();
       // A previous find() may have handed the shell a Document API fallback
       // that is still running. Its generation only advances when the shell's
       // query() is called again, and a query the host answers synchronously
@@ -12065,6 +12085,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       // session open where `close()` releases it, but both invalidate the
       // results a late `next()`/`previous()` would write back.
       searchRequestGeneration += 1;
+      cancelRefreshShellSearch();
       cancelOutstandingShellFallback();
       const host = getHostSearch();
       if (host && typeof host.clear === 'function') safeCall<unknown>(() => host.clear(), null);
@@ -12225,6 +12246,56 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     },
   };
 
+  let searchRefreshTimer: ReturnType<typeof setTimeout> | null = null;
+  scheduleActiveSearchRefresh = (): void => {
+    if (searchRefreshTimer !== null) clearTimeout(searchRefreshTimer);
+    if (!searchState.open || !searchState.query) return;
+    const scheduledGeneration = searchRequestGeneration;
+    searchRefreshTimer = setTimeout(() => {
+      searchRefreshTimer = null;
+      if (disposed || scheduledGeneration !== searchRequestGeneration || !searchState.open || !searchState.query)
+        return;
+      const input = {
+        query: searchState.query,
+        caseSensitive: searchState.caseSensitive,
+        includeDeletedText: searchState.includeDeletedText,
+        regex: searchState.regex,
+      };
+      const editSearch = getEditCommandSearch();
+      const host = getHostSearch();
+      if (typeof editSearch?.refresh !== 'function' && typeof host?.refresh !== 'function') return;
+      const generation = ++searchRequestGeneration;
+      cancelOutstandingShellFallback();
+      if (typeof editSearch?.refresh === 'function' && typeof editSearch.query === 'function') {
+        const capturedSearch = editSearch;
+        releaseRefreshShellSearch = () => {
+          capturedSearch.query({ query: '' });
+        };
+      }
+      const result =
+        typeof editSearch?.refresh === 'function'
+          ? safeCall<unknown>(() => editSearch.refresh(input), null)
+          : safeCall<unknown>(() => host!.refresh(), null);
+      if (isPromiseLike(result)) {
+        pendingFallbackGeneration = generation;
+        void Promise.resolve(result).then(
+          (resolved) => {
+            if (generation !== searchRequestGeneration || disposed) return;
+            pendingFallbackGeneration = null;
+            applyHostSearchResult(resolved, readEditCommandCanReplace(), readEditCommandCanReplaceAll());
+          },
+          () => {
+            if (generation !== searchRequestGeneration || disposed) return;
+            pendingFallbackGeneration = null;
+            setSearchState({ available: false, reason: SUPERDOC_UI_REASONS.searchUnavailable });
+          },
+        );
+      } else if (result !== null) {
+        applyHostSearchResult(result);
+      }
+    }, 120);
+  };
+
   // -- styles (read-only catalogue + active paragraph style) ----------------
   const stylesSub = sliceHandle((s) => s.styles);
   const stylesSnap = snapshotHandle(stylesSub);
@@ -12278,6 +12349,9 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     watermark.destroy();
     clearContentControlHighlight();
     disposed = true;
+    if (searchRefreshTimer !== null) clearTimeout(searchRefreshTimer);
+    searchRefreshTimer = null;
+    cancelRefreshShellSearch();
     releaseSharedUiTrackedChangesCatalog(uiTrackedChangesCatalogHost, uiTrackedChangesCatalogState);
     if (foregroundAsyncRetryTimer) {
       clearTimeout(foregroundAsyncRetryTimer);
