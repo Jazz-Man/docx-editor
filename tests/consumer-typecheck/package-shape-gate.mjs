@@ -14,7 +14,8 @@ import { fileURLToPath } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(here, '..', '..');
-const tarballPath = join(repoRoot, 'packages', 'superdoc', 'superdoc.tgz');
+const internal = process.env.SUPERDOC_EVAL_FAST_BUILD === '1';
+const tarballPath = join(repoRoot, 'packages', 'superdoc', internal ? 'superdoc-internal.tgz' : 'superdoc.tgz');
 const doPack = process.argv.includes('--pack');
 const knownAttwInternalCrash = "Cannot read properties of undefined (reading 'filename')";
 
@@ -86,7 +87,14 @@ function getCjsEntrypoints(exportsMap) {
 }
 
 if (doPack) {
-  run('pnpm --filter superdoc run pack:es');
+  if (internal) {
+    execFileSync('pnpm', ['run', 'pack:superdoc:internal'], {
+      cwd: join(repoRoot, '..', '..'),
+      stdio: 'inherit',
+    });
+  } else {
+    run('pnpm --filter superdoc run pack:es');
+  }
 }
 
 if (!existsSync(tarballPath)) {

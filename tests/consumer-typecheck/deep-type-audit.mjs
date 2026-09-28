@@ -70,11 +70,15 @@ const reportOnly = args.has('--report-only') || (!doStrict && !doStrictSupported
 // bootstrap the fixture's pinned dev deps from package-lock.json).
 if (doPack) {
   console.log('[audit] Packing superdoc...');
-  execSync('pnpm --filter superdoc run pack:es', { cwd: repoRoot, stdio: 'inherit' });
+  const internal = process.env.SUPERDOC_EVAL_FAST_BUILD === '1';
+  execSync(internal ? 'pnpm run pack:superdoc:internal' : 'pnpm --filter superdoc run pack:es', {
+    cwd: internal ? join(repoRoot, '..', '..') : repoRoot,
+    stdio: 'inherit',
+  });
   console.log('[audit] Installing fixture...');
   installPackedSuperdocFixture({
     fixtureRoot: here,
-    superdocTarball: join(repoRoot, 'packages', 'superdoc', 'superdoc.tgz'),
+    superdocTarball: join(repoRoot, 'packages', 'superdoc', internal ? 'superdoc-internal.tgz' : 'superdoc.tgz'),
     engineTarball: process.env.SUPERDOC_DOCX_ENGINE_TARBALL,
   });
 }

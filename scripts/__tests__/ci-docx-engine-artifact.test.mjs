@@ -28,6 +28,12 @@ test('reuses both the existing engine and Document API builds', () => {
   assert.equal(args.includes('--no-document-api-build'), true);
 });
 
+test('internal engine packing keeps local-only archives private', () => {
+  const args = createEnginePackArguments({ localOnly: true });
+  assert.ok(args.includes('--local-only'));
+  assert.ok(args.includes('--no-build'));
+});
+
 function fakeVerifiedEngine() {
   return {
     engineVersion: '1.2.3',

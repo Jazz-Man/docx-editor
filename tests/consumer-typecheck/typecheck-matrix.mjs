@@ -37,14 +37,15 @@ try {
 console.log();
 
 if (!skipPack) {
-  const tarballPath = join(repoRoot, 'packages', 'superdoc', 'superdoc.tgz');
+  const internal = process.env.SUPERDOC_EVAL_FAST_BUILD === '1';
+  const tarballPath = join(repoRoot, 'packages', 'superdoc', internal ? 'superdoc-internal.tgz' : 'superdoc.tgz');
   if (useExistingTarball) {
     console.log('Installing fixture from the existing superdoc tarball...');
   } else {
     console.log('Packing superdoc and reinstalling fixture...');
     try {
-      execSync('pnpm --filter superdoc run pack:es', {
-        cwd: repoRoot,
+      execSync(internal ? 'pnpm run pack:superdoc:internal' : 'pnpm --filter superdoc run pack:es', {
+        cwd: internal ? join(repoRoot, '..', '..') : repoRoot,
         stdio: 'inherit',
       });
     } catch {

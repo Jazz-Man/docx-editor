@@ -91,7 +91,7 @@ export function engineConsumerReceiptPath(root = archiveRoot) {
   return path.join(root, receiptName);
 }
 
-export function createEnginePackArguments({ v2Root = engineRoot, destination = archiveRoot } = {}) {
+export function createEnginePackArguments({ v2Root = engineRoot, destination = archiveRoot, localOnly = false } = {}) {
   return [
     path.join(v2Root, 'scripts', 'pack-v2-package.mjs'),
     '--package',
@@ -100,6 +100,7 @@ export function createEnginePackArguments({ v2Root = engineRoot, destination = a
     destination,
     '--no-build',
     '--no-document-api-build',
+    ...(localOnly ? ['--local-only'] : []),
   ];
 }
 
@@ -236,14 +237,23 @@ export function packEngine({
   let nextMoved = false;
   try {
     mkdirSync(nextRoot);
-    run(process.execPath, createEnginePackArguments({ v2Root, destination: nextRoot }), {
+    const manifest = JSON.parse(readFileSync(path.join(v2Root, 'package.json'), 'utf8'));
+    const verifiedInput = verifyPreparedEngine({
+      v2Root,
+      expectedVersion: manifest.version,
+      surfaces: ['dist', 'dist-cdn'],
+      currentInputIdentity: observeEngineInputIdentity({ v2Root }),
+      ...(expectedBuildProfile ? { expectedBuildProfile } : {}),
+    });
+    const localOnly = verifiedInput.receipt.buildProfile === 'eval-fast';
+    run(process.execPath, createEnginePackArguments({ v2Root, destination: nextRoot, localOnly }), {
       cwd: publicWorkspaceRoot,
+      env: localOnly ? { ...process.env, SUPERDOC_EVAL_FAST_BUILD: '1' } : process.env,
     });
     const engineArchive = findEngineArchive(nextRoot);
     for (const file of readdirSync(nextRoot)) {
       if (file.endsWith('.tgz') && path.join(nextRoot, file) !== engineArchive) rmSync(path.join(nextRoot, file));
     }
-    const manifest = JSON.parse(readFileSync(path.join(v2Root, 'package.json'), 'utf8'));
     const verifiedEngine = verifyPreparedEngine({
       v2Root,
       expectedVersion: manifest.version,
@@ -394,8 +404,8 @@ function findEngineArchive(root = archiveRoot) {
   return archives[0];
 }
 
-function runChecked(executable, args, { cwd = publicRoot } = {}) {
-  const result = spawnSync(executable, args, { cwd, stdio: 'inherit' });
+function runChecked(executable, args, { cwd = publicRoot, env = process.env } = {}) {
+  const result = spawnSync(executable, args, { cwd, env, stdio: 'inherit' });
   if (result.error) throw result.error;
   if (result.status !== 0) throw new Error(`${executable} exited with ${result.status ?? result.signal}.`);
 }
