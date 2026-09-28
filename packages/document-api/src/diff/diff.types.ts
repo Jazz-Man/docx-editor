@@ -70,6 +70,7 @@ export type DiffApplyEligibilityBlockerCode =
   | 'styles-replay-unsafe'
   | 'numbering-replay-unsafe'
   | 'definition-replay-tracked-unsupported'
+  | 'package-graph-tracked-unsupported'
   | 'section-reference-replay-unsafe'
   | 'structural-paragraph-unsupported';
 
@@ -102,8 +103,17 @@ export interface DiffPayload {
   summary: DiffSummary;
   /** Known compare-time blockers by apply mode. Candidate status is not a live apply guarantee. */
   applyEligibility?: DiffApplyEligibility;
+  /** Exhaustive changed OPC parts from the two source-complete snapshots. */
+  partChanges?: DiffPartChange[];
   /** Opaque engine-owned diff data. Do not inspect or modify. */
   payload: Record<string, unknown>;
+}
+
+export interface DiffPartChange {
+  partUri: string;
+  kind: 'added' | 'removed' | 'modified';
+  beforeFingerprint: string | null;
+  afterFingerprint: string | null;
 }
 
 export interface DiffApplyReviewItem {

@@ -446,6 +446,7 @@ import { executeDiffCapture, executeDiffCompare, executeDiffApply } from './diff
 import type {
   DiffSnapshot,
   DiffPayload,
+  DiffPartChange,
   DiffApplyResult,
   DiffCompareInput,
   DiffApplyInput,
@@ -460,6 +461,7 @@ import type {
 export type {
   DiffSnapshot,
   DiffPayload,
+  DiffPartChange,
   DiffApplyResult,
   DiffCompareInput,
   DiffApplyInput,

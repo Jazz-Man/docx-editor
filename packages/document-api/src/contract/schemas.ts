@@ -4190,6 +4190,7 @@ const diffApplyEligibilityBlockerSchema: JsonSchema = objectSchema(
         'styles-replay-unsafe',
         'numbering-replay-unsafe',
         'definition-replay-tracked-unsupported',
+        'package-graph-tracked-unsupported',
         'section-reference-replay-unsafe',
         'structural-paragraph-unsupported',
       ],
@@ -4222,6 +4223,17 @@ const diffPayloadSchema: JsonSchema = objectSchema(
     coverage: diffCoverageSchema,
     summary: diffSummarySchema,
     applyEligibility: diffApplyEligibilitySchema,
+    partChanges: arraySchema(
+      objectSchema(
+        {
+          partUri: { type: 'string' },
+          kind: { type: 'string', enum: ['added', 'removed', 'modified'] },
+          beforeFingerprint: { type: ['string', 'null'] },
+          afterFingerprint: { type: ['string', 'null'] },
+        },
+        ['partUri', 'kind', 'beforeFingerprint', 'afterFingerprint'],
+      ),
+    ),
     payload: { type: 'object', description: 'Opaque engine-owned diff data.' },
   },
   ['version', 'engine', 'baseFingerprint', 'targetFingerprint', 'coverage', 'summary', 'payload'],

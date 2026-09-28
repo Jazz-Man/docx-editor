@@ -191,7 +191,9 @@ describe('document-api contract catalog', () => {
         ?.properties?.code?.enum;
 
     expect(compareCodes).toContain('definition-replay-tracked-unsupported');
+    expect(compareCodes).toContain('package-graph-tracked-unsupported');
     expect(applyCodes).toEqual(compareCodes);
+    expect(applyInput.properties?.diff?.properties?.partChanges).toEqual(compareOutput.properties?.partChanges);
   });
 
   it('keeps catalog key coverage in lockstep with operation ids', () => {

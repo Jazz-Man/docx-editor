@@ -3,6 +3,7 @@ export { executeDiffCapture, executeDiffCompare, executeDiffApply } from './diff
 export type {
   DiffSnapshot,
   DiffPayload,
+  DiffPartChange,
   DiffApplyResult,
   DiffSummary,
   DiffCoverage,
