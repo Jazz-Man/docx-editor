@@ -1,0 +1,19 @@
+{
+  "name": "@superdoc-examples/document-comparison",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.24.0",
+  "scripts": {
+    "start": "tsx index.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test compare.test.ts"
+  },
+  "dependencies": {
+    "@superdoc/sdk": "2.16.0-next.9"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.2"
+  }
+}

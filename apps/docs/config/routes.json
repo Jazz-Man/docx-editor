@@ -22,6 +22,7 @@
     "/agents/workflows/review-tracked-changes/",
     "/document-api/application-data/",
     "/document-api/comments/",
+    "/document-api/document-comparison/",
     "/document-api/mental-model/",
     "/document-api/mutation-plans/",
     "/document-api/output-projections/",

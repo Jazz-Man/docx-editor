@@ -11,6 +11,7 @@
     "replace-delete-content",
     "mutation-plans",
     "tracked-changes",
+    "document-comparison",
     "comments",
     "receipts-and-errors",
     "reference"

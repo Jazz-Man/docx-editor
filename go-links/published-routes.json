@@ -12,6 +12,7 @@
   "examples/collaboration",
   "examples/content-controls",
   "examples/custom-ui",
+  "examples/document-comparison",
   "examples/document-modes",
   "examples/proofing",
   "examples/react",

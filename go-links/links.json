@@ -19,6 +19,7 @@
     "examples/collaboration": { "path": "examples/collaboration" },
     "examples/content-controls": { "path": "examples/content-controls" },
     "examples/custom-ui": { "path": "examples/custom-ui" },
+    "examples/document-comparison": { "path": "examples/document-comparison" },
     "examples/document-modes": { "path": "examples/document-modes" },
     "examples/proofing": { "path": "examples/proofing" },
     "examples/react": { "path": "examples/react" },

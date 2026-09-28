@@ -1,0 +1,77 @@
+---
+title: Compare and apply tracked changes
+navTitle: Document comparison
+description: Compare two documents, apply the result as a reviewable tracked change, and check what document shapes are supported before you rely on it.
+---
+
+Document comparison turns two versions of a document into a reviewable tracked change, instead of asking a person to spot the difference by eye. The workflow is `diff.capture` on the target, `diff.compare` against the base, then `diff.apply` with `changeMode: 'tracked'`. The resulting change goes through the same review API as an authored [tracked change](/document-api/tracked-changes).
+
+Not every document shape is eligible for a tracked apply today. Read [applyEligibility before apply](#read-applyeligibility-before-apply) and the [supported-case matrix](#supported-case-matrix) before relying on this workflow for a document you have not already checked.
+
+## Compare two documents
+
+Capture the target document's snapshot, then compare it against the currently open base document:
+
+```ts
+const targetSnapshot = await targetDoc.diff.capture();
+
+const diff = await baseDoc.diff.compare({ targetSnapshot });
+
+console.log(diff.summary.changedComponents);
+// e.g. ['body']
+```
+
+`diff.summary` reports which components changed (`body`, `comments`, `styles`, `numbering`, `headerFooters`, `parts`) without exposing the underlying comparison mechanics. `diff.payload` is opaque and engine-owned; do not inspect or persist it directly. See the [`diff.compare` reference](/document-api/reference/diff/compare) for the full result shape.
+
+## Read applyEligibility before apply
+
+`diff.applyEligibility` reports, per change mode, whether the diff is a candidate for apply or already known to be blocked, before you call apply at all:
+
+```ts
+const trackedEligibility = diff.applyEligibility?.tracked;
+
+if (trackedEligibility?.status !== 'candidate') {
+  throw new Error(`Tracked apply is blocked: ${JSON.stringify(trackedEligibility?.blockers ?? [])}`);
+}
+
+const result = await baseDoc.diff.apply({ diff, changeMode: 'tracked' });
+```
+
+A blocker names the affected families and a stable code (for example `structural-paragraph-unsupported` or `header-footer-tracked-lifecycle-unsupported`). `diff.apply` enforces the same boundary at apply time: an unsupported family fails the whole call closed, with no partial output and no mutation, rather than silently applying a broader replacement than requested. See the [`diff.apply` reference](/document-api/reference/diff/apply) for every documented family and blocker code.
+
+## Review and decide
+
+A comparison-generated change is reviewed and decided exactly like an authored one. Follow [List and inspect changes](/document-api/tracked-changes#list-and-inspect-changes) and [Accept or reject one change](/document-api/tracked-changes#accept-or-reject-one-change) — the same `trackChanges.list()`, `trackChanges.get()`, and `trackChanges.decide()` operations apply regardless of whether the change came from a rewrite or a comparison.
+
+<Callout variant='info' title='Comparison-hunk identity'>
+  `trackChanges.list()` exposes each comparison hunk as a parent whose `reviewGroup.kind` and `reviewGroup.groupOrigin`
+  are both `comparison-hunk`. Its `reviewGroup.childChangeIds` identify the underlying changes. The review item ids
+  returned by `diff.apply().operationReceipts` remain individually addressable through `trackChanges.get()` and
+  `trackChanges.decide()`, even though those child ids are not separate list rows.
+</Callout>
+
+## Supported-case matrix
+
+This matrix states current, version-qualified support; each row is checked against this version's actual behavior, not a completed feature's original intent.
+
+| Shape                                                | Current behavior                                                                                                                                                                       | Owning issue     |
+| ---------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------- |
+| Localized, repeated, or separated body-text changes  | Supported in direct and tracked modes. Tracked replacements retain independent comparison-hunk review groups.                                                                          | SD-4953, SD-5189 |
+| Body run-formatting changes                          | Supported in direct and tracked modes for verified run-formatting cases; unsupported surrounding structures still fail closed.                                                         | SD-5130          |
+| Tables                                               | Supported in verified direct and tracked cases; eligibility remains authoritative for the exact table shape.                                                                           | SD-5130          |
+| Header/footer in-place content edits                 | Supported in direct and tracked modes.                                                                                                                                                 | SD-3647          |
+| Header/footer slot repointing or topology changes    | Supported in direct mode. Tracked mode remains unsupported and fails closed.                                                                                                           | SD-3647          |
+| Existing footnote/endnote content                    | Supported in direct and tracked modes.                                                                                                                                                 | SD-5227          |
+| New or removed footnote/endnote parts and references | Supported in verified exact-lifecycle cases in both modes. Ambiguous or mixed reference ownership fails closed.                                                                        | SD-5227          |
+| Pre-existing pending revisions in the base or target | Supported in both modes when the target revision set can be reconciled exactly; ambiguous replay fails closed.                                                                         | SD-5130          |
+| Inline images and drawings                           | Text beside a retained drawing and verified exact image replay are supported. Changed carriers, relationships, media, or opaque sidecars remain eligibility-gated and can fail closed. | SD-5130, SD-5271 |
+| Fields and cross-references                          | Verified simple- and complex-field insertion/removal cases are supported. Incomplete, mixed, or changed retained carriers fail closed.                                                 | SD-5130, SD-5216 |
+| First comment on a document                          | Lossless plain-text creation is supported in both modes, including initials. Rich or otherwise lossy first-comment creation fails closed.                                              | SD-5130          |
+| Content controls (SDT)                               | Unsupported: an SDT in the body currently fails the body family closed, including edits elsewhere in that body.                                                                        | SD-5219          |
+
+This snapshot was verified against `@superdoc/sdk` `2.16.0-next.8` and `@superdoc/docx-engine`
+`0.18.0-next.7`. Its source work is tracked by SD-4953 (localized tracked comparison), SD-5130 (reporter
+pair eligibility), and SD-3647 (header/footer coverage), with the narrower follow-ups named in the table. Re-run the
+Document API comparison suites and update this matrix whenever diff eligibility, replay behavior, or review-group
+contracts change. For a runnable version of the workflow above, see the [document comparison
+example](https://go.superdoc.dev/examples/document-comparison).
