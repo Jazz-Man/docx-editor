@@ -9,7 +9,7 @@
  * Clean-checkout safe: the schemas/ and agent/ outputs live under
  * `packages/document-api/generated/`, which is gitignored. Those artifacts are
  * built in memory (so any builder error still surfaces) but their on-disk
- * presence is not required. Run `pnpm generate:docapi` to materialize them
+ * presence is not required. Run `pnpm run docapi:sync` to materialize them
  * locally before publishing.
  *
  * Documentation coverage is checked separately by

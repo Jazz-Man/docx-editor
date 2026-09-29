@@ -21,7 +21,7 @@
  *   pnpm check:public           (umbrella, runs SuperDoc + Document API)
  *   pnpm docapi:check           (Document API only, this script)
  *
- * Legacy alias preserved: `pnpm run docapi:check`.
+ * Invoked via the root script `pnpm run docapi:check`.
  */
 
 import { spawnSync } from 'node:child_process';
