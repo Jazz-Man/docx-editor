@@ -39,23 +39,26 @@ PNPM_OK    := $(filter $(PNPM_MAJOR).%,$(PNPM_V))
 
 BUN_V      := $(shell bun -v 2>/dev/null)
 
+# usage: $(call require_version,<name>,<current>,<ok-var>,<pin>)
+define require_version
+$(if $($(3)),,$(error $(1) $(2) does not satisfy the repo pin $(4)))
+endef
+
 check-env: ## Check node/pnpm against repo pins; bun availability
 	@echo "node $(NODE_V) (pin $(NODE_PIN) via .nvmrc)"
-	@[ -n "$(NODE_OK)" ] || { echo "node $(NODE_V) does not satisfy .nvmrc $(NODE_PIN)"; exit 1; }
+	$(call require_version,node,$(NODE_V),NODE_OK,$(NODE_PIN))
 	@echo "pnpm $(PNPM_V) (pin pnpm@$(PNPM_PIN) via packageManager)"
-	@[ -n "$(PNPM_OK)" ] || { echo "pnpm $(PNPM_V) does not satisfy pnpm@$(PNPM_PIN)"; exit 1; }
-	@[ -n "$(BUN_V)" ] || echo "note: bun not found - required by test and ci-local (>= 1.3.13)"
+	$(call require_version,pnpm,$(PNPM_V),PNPM_OK,$(PNPM_PIN))
+	$(if $(BUN_V),,@echo "note: bun not found - required by test and ci-local (>= 1.3.13)")
 
 # Config gates must run BEFORE pnpm install: a rejected config would
 # already have steered resolution (same order scripts/oss-local-ci.mjs
-# enforces in its setup lane). Node/pnpm versions are enforced by
-# engines in package.json and CI's .nvmrc — the Makefile does not
-# duplicate that.
+# enforces in its setup lane).
 install: check-env ## Version checks, config gates, then pnpm install
-	pnpm run check:pnpm-config && pnpm run check:vite-plus && pnpm run check:public-ci && pnpm install
+	@pnpm run check:pnpm-config && pnpm run check:vite-plus && pnpm run check:public-ci && pnpm install
 
 reset: ## DESTRUCTIVE: wipe dist outputs, node_modules, stray package-lock.json; reinstall
-	pnpm run reset
+	@pnpm run reset
 
 # ------------------------------------------------------------ Development ---
 
@@ -63,13 +66,13 @@ reset: ## DESTRUCTIVE: wipe dist outputs, node_modules, stray package-lock.json;
 
 ## Development
 dev: ## Run the SuperDoc dev editor
-	pnpm run dev
+	@pnpm run dev
 
 dev-docs: ## Run editor + CDN watch + docs site concurrently
-	pnpm run dev:docs
+	@pnpm run dev:docs
 
 watch: ## Watch-build the SuperDoc ES output
-	pnpm run watch
+	@pnpm run watch
 
 # ------------------------------------------------------------------ Build ---
 
@@ -77,51 +80,51 @@ watch: ## Watch-build the SuperDoc ES output
 
 ## Build
 build: ## Build SuperDoc (npm + CDN surfaces)
-	pnpm run build:superdoc
+	@pnpm run build:superdoc
 
 clean: ## Remove packages/**/dist and shared/**/dist
-	pnpm run clean:packages
+	@pnpm run clean:packages
 
 # Ordered composite - run without -j.
 build-clean: clean build ## Clean, rebuild, then force a full type-check
-	pnpm run type-check:force
+	@pnpm run type-check:force
 
 rebuild-types: ## Rebuild type outputs serially (filter order matters)
-	pnpm run rebuild:types
+	@pnpm run rebuild:types
 
 # The sealed tgz needs the d.ts of all referenced projects; pack-es alone
 # skips types.
 pack: type-check pack-es ## Type-check, then sealed superdoc.tgz
 
 pack-es: ## Pack superdoc.tgz WITHOUT type-check
-	pnpm run pack:es
+	@pnpm run pack:es
 
 # ------------------------------------------------------------------- Test ---
 
 .PHONY: test test-superdoc test-all test-slow test-cov test-bench test-docx-privacy
 
 ## Test
-test: ## Full suite: vitest projects + bun packages
-	@command -v bun >/dev/null 2>&1 || { echo "bun >= 1.3.13 is required for the bun-test packages - https://bun.sh"; exit 1; }
-	pnpm test
+test: ## Full suite: vitest projects + bun packages (needs bun >= 1.3.13)
+	$(if $(BUN_V),,$(error bun >= 1.3.13 is required by test - https://bun.sh))
+	@pnpm test
 
 test-superdoc: ## Vitest for packages/superdoc only
-	pnpm run test:superdoc
+	@pnpm run test:superdoc
 
 test-all: ## Vitest projects only (no bun packages)
-	pnpm run test:all
+	@pnpm run test:all
 
 test-slow: ## Memory-profile suite (@superdoc/layout-tests)
-	pnpm run test:slow
+	@pnpm run test:slow
 
 test-cov: ## Coverage report into coverage/
-	pnpm run test:cov
+	@pnpm run test:cov
 
 test-bench: ## Benchmarks (VITEST_BENCH=true)
-	pnpm run test:bench
+	@pnpm run test:bench
 
 test-docx-privacy: ## DOCX fixture privacy gate (vitest twin)
-	pnpm run test:docx-privacy
+	@pnpm run test:docx-privacy
 
 # --------------------------------------------------------------- Quality ---
 
@@ -129,22 +132,22 @@ test-docx-privacy: ## DOCX fixture privacy gate (vitest twin)
 
 ## Quality
 lint: ## vp lint (oxlint) over the workspace
-	pnpm run lint
+	@pnpm run lint
 
 lint-fix: ## vp lint --fix
-	pnpm run lint:fix
+	@pnpm run lint:fix
 
 format: ## vp fmt (oxfmt)
-	pnpm run format
+	@pnpm run format
 
 format-check: ## Format-coverage gate + vp fmt --check
-	pnpm run format:check
+	@pnpm run format:check
 
 type-check: ## tsc -b over tsconfig.references.json (13 projects)
-	pnpm run type-check
+	@pnpm run type-check
 
 type-check-force: ## tsc -b --force
-	pnpm run type-check:force
+	@pnpm run type-check:force
 
 # Ordered composite - run without -j.
 check-all: format lint-fix test ## format + lint:fix + test
@@ -158,13 +161,13 @@ check-all: format lint-fix test ## format + lint:fix + test
 check-public: check-public-superdoc docapi-check ## Both public-contract gates
 
 check-public-superdoc: ## 13-stage superdoc public-surface gate
-	pnpm run check:public:superdoc
+	@pnpm run check:public:superdoc
 
 docapi-sync: ## Generate document-api contract outputs
-	pnpm run docapi:sync
+	@pnpm run docapi:sync
 
 docapi-check: ## Check docapi parity (no prior generate needed)
-	pnpm run docapi:check
+	@pnpm run docapi:check
 
 # Ordered composite - run without -j.
 docapi-sync-check: docapi-sync docapi-check ## Generate, then check
@@ -175,19 +178,19 @@ docapi-sync-check: docapi-sync docapi-check ## Generate, then check
 
 ## CI lanes
 ci-local: ## Run the full local CI mirror
-	pnpm run ci:local
+	@pnpm run ci:local
 
 ci-list: ## List lanes and stages
-	node scripts/oss-local-ci.mjs --list
+	@node scripts/oss-local-ci.mjs --list
 
 ci-plan: ## Show the execution plan
-	node scripts/oss-local-ci.mjs --plan
+	@node scripts/oss-local-ci.mjs --plan
 
 ci-lane: ## make ci-lane LANE=ci-superdoc
-	node scripts/oss-local-ci.mjs --lane $(LANE)
+	@node scripts/oss-local-ci.mjs --lane $(LANE)
 
 ci-stage: ## make ci-stage LANE=ci-superdoc STAGE=lint
-	node scripts/oss-local-ci.mjs --lane $(LANE) --stage $(STAGE)
+	@node scripts/oss-local-ci.mjs --lane $(LANE) --stage $(STAGE)
 
 # --------------------------------------------------------------- Release ---
 
@@ -195,12 +198,12 @@ ci-stage: ## make ci-stage LANE=ci-superdoc STAGE=lint
 
 ## Release
 release: ## semantic-release for packages/superdoc (type-checks first)
-	pnpm run release
+	@pnpm run release
 
 publish: ## Sealed-tarball publisher - 1.x only by policy
-	pnpm run publish
+	@pnpm run publish
 
 local-publish: ## Publish -local.N versions to verdaccio (:4873 must run)
-	pnpm run local:publish
+	@pnpm run local:publish
 
 ## Orbit-only (private checkout)
