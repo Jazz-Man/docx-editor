@@ -87,6 +87,28 @@ pnpm dev
 
 `pnpm dev` gives you a live editor to try your changes in.
 
+## Make targets
+
+A `Makefile` at the repo root documents the common commands and their
+ordering — run `make help` for the full list. Everyday targets:
+
+```bash
+make install   # version checks, config gates, then pnpm install
+make dev       # live editor playground
+make test      # vitest projects + bun packages (needs Bun >= 1.3.13)
+make lint      # oxlint via vite-plus
+make format    # oxfmt via vite-plus
+make ci-list   # local CI lanes (pnpm ci:local runs the full mirror)
+```
+
+The underlying `pnpm` scripts remain the source of truth; `make` only adds
+naming, grouping, ordering, and environment checks. `make install` first
+verifies the active node and pnpm versions against the repo pins
+(`.nvmrc` and `packageManager`) before running the install. A few root scripts
+(`update-preset-geometry`, `test:sdk-python-document-host`, and the
+sdk/mcp/cli legs inside the orchestrators) exist for SuperDoc's private
+checkout and do nothing useful in a public clone.
+
 ## Where to make changes
 
 | What you want to change | Where to look |
