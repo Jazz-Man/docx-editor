@@ -119,8 +119,6 @@
     "verify:cdn": "node ./scripts/audit-public-cdn-output.cjs && node ./scripts/audit-cdn-separation.cjs",
     "watch:cdn": "vp build --watch --config vite.config.cdn.js",
     "clean": "rm -rf dist dist-cdn",
-    "pack:local": "pnpm run pack:es",
-    "pack:dist": "pnpm run pack:es",
     "pack:sealed": "node ./scripts/pack-sealed.mjs",
     "pack:es": "node ../../scripts/pack-superdoc.mjs",
     "test": "vp test"
