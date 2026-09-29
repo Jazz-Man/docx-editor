@@ -82,7 +82,7 @@ const LANES = [
       { id: 'public-ci', title: 'Public CI coverage contract', ...sh('pnpm run check:public-ci') },
       { id: 'lint', title: 'Lint', ...sh('NODE_OPTIONS=--max-old-space-size=4096 pnpm run lint') },
       { id: 'format', title: 'Format check', ...sh('pnpm run format:check') },
-      { id: 'build', title: 'Build', ...sh('pnpm run build') },
+      { id: 'build', title: 'Build', ...sh('pnpm run build:superdoc') },
       { id: 'typecheck', title: 'Typecheck', ...sh('pnpm run type-check') },
       // Needs the installed tree: the guard walks both dependencies' real
       // importer chains rather than reading the lockfile, so it runs after the

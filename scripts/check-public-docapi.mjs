@@ -4,7 +4,7 @@
  * (SuperDoc); same staged shape, same failure UX.
  *
  * Non-mutating, clean-checkout safe: stage 2 builds gitignored
- * artifacts in memory so `generate:docapi` is not a prerequisite.
+ * artifacts in memory so `docapi:sync` is not a prerequisite.
  * Cheap-to-expensive ordering — contract drift fails in seconds.
  *
  * Stages:
@@ -19,7 +19,7 @@
  *
  * Local usage:
  *   pnpm check:public           (umbrella, runs SuperDoc + Document API)
- *   pnpm check:public:docapi    (Document API only, this script)
+ *   pnpm docapi:check           (Document API only, this script)
  *
  * Legacy alias preserved: `pnpm run docapi:check`.
  */
@@ -47,7 +47,7 @@ const stages = [
     args: ['exec', 'tsx', 'packages/document-api/scripts/check-contract-outputs.ts'],
     blurb:
       'Schemas and agent artifacts built in memory and compared to the contract; ' +
-      'no need to run `pnpm run generate:docapi` first.',
+      'no need to run `pnpm run docapi:sync` first.',
   },
   {
     name: 'documented-operations',

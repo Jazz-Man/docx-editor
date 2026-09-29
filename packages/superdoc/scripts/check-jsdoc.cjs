@@ -20,7 +20,7 @@
  *      The list is small on purpose. Per-file `// @ts-check` directives
  *      elsewhere (e.g. the broader SuperDoc.js work) are still useful
  *      for IDE feedback but are not enforced through this script; they
- *      are checked by the main `pnpm check:types` (`tsc -b`) run.
+ *      are checked by the main `pnpm type-check` (`tsc -b`) run.
  *
  *   2. RATCHET — Discover every public-reachable .js file with JSDoc
  *      type annotations (transitively from the supported `superdoc` root
