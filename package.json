@@ -3,7 +3,12 @@
   "private": true,
   "license": "AGPL-3.0",
   "packageManager": "pnpm@11.24.0",
+  "engines": {
+    "node": ">=22.21.1 <23",
+    "pnpm": ">=11.24.0"
+  },
   "scripts": {
+    "preinstall": "npx --yes only-allow pnpm",
     "ci:local": "node scripts/oss-local-ci.mjs",
     "test": "node scripts/test.mjs",
     "test:bench": "VITEST_BENCH=true vp test run",
