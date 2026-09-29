@@ -1,8 +1,10 @@
 # SuperDoc developer facade.
 #
 # Mechanics live in package.json scripts and scripts/*.mjs; this file adds
-# naming, grouping, ordering, and environment checks on top. All targets
-# are phony actions - this is a facade, not a build system.
+# naming, grouping, ordering, and environment checks on top. The clean and
+# reset recipes are the exception: they own their find-based cleanup logic
+# here directly. All targets are phony actions - this is a facade, not a
+# build system.
 #
 # Orbit-only scripts (no-ops in a public clone, kept for the private
 # checkout that shares this manifest): test:sdk-python-document-host,
@@ -57,8 +59,11 @@ check-env: ## Check node/pnpm against repo pins; bun availability
 install: check-env ## Version checks, config gates, then pnpm install
 	@pnpm run check:pnpm-config && pnpm run check:vite-plus && pnpm run check:public-ci && pnpm install
 
-reset: ## DESTRUCTIVE: wipe dist outputs, node_modules, stray package-lock.json; reinstall
-	@pnpm run reset
+reset: ## DESTRUCTIVE: wipe dists, node_modules, stray package-lock.json; reinstall
+	@find packages shared -type d -name dist -prune -exec rm -rf {} +
+	@find . -name 'node_modules' -type d -prune -exec rm -rf {} +
+	@find . -name 'package-lock.json' -type f -not -path './tests/consumer-typecheck/*' -delete
+	@pnpm install
 
 # ------------------------------------------------------------ Development ---
 
@@ -82,8 +87,8 @@ watch: ## Watch-build the SuperDoc ES output
 build: ## Build SuperDoc (npm + CDN surfaces)
 	@pnpm run build:superdoc
 
-clean: ## Remove packages/**/dist and shared/**/dist
-	@pnpm run clean:packages
+clean: ## Remove every packages/**/dist and shared/**/dist (incl. nested)
+	@find packages shared -type d -name dist -prune -exec rm -rf {} +
 
 # Ordered composite - run without -j.
 build-clean: clean build ## Clean, rebuild, then force a full type-check

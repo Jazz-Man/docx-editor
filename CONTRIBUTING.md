@@ -102,7 +102,9 @@ make ci-list   # local CI lanes (pnpm ci:local runs the full mirror)
 ```
 
 The underlying `pnpm` scripts remain the source of truth; `make` only adds
-naming, grouping, ordering, and environment checks. `make install` first
+naming, grouping, ordering, and environment checks. `make clean` and
+`make reset` are the exception — their find-based cleanup logic lives directly
+in the Makefile. `make install` first
 verifies the active node and pnpm versions against the repo pins
 (`.nvmrc` and `packageManager`) before running the install. A few root scripts
 (`update-preset-geometry`, `test:sdk-python-document-host`, and the

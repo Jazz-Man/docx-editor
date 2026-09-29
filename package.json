@@ -27,8 +27,6 @@
     "build:superdoc": "pnpm --prefix packages/superdoc run build",
     "build:dev": "pnpm --prefix packages/superdoc run build:dev",
     "pack:es": "pnpm --filter superdoc run pack:es",
-    "clean:packages": "rm -rf ./packages/**/dist ./shared/**/dist",
-    "reset": "pnpm run clean:packages && find . -name 'node_modules' -type d -prune -exec rm -rf {} + && find . -name 'package-lock.json' -type f -delete && pnpm install",
     "publish": "node scripts/publish-superdoc.cjs",
     "format": "vp fmt",
     "format:check": "pnpm run check:format-coverage && vp fmt --check",
