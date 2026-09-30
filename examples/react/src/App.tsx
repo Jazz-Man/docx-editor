@@ -37,6 +37,10 @@ export default function App() {
         onException={reportDocumentError}
         onReady={() => setReady(true)}
         ref={editorRef}
+        ui={{
+          toolbar: true,
+          ruler: true
+        }}
       />
     </main>
   );

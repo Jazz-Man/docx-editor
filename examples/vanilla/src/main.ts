@@ -8,6 +8,14 @@ if (!exportButton) throw new Error('The export button is missing.');
 const superdoc = new SuperDoc({
   selector: '#editor',
   document: '/sample.docx',
+  documentMode: 'suggesting',
+  role:"editor",
+  ui: {
+    toolbar: {
+      container: '#toolbar',
+    },
+    ruler: true
+  },
   onReady: () => {
     exportButton.disabled = false;
   },

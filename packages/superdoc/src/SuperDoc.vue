@@ -3800,6 +3800,12 @@ const whiteboardInteractive = computed(() => whiteboardEnabled.value);
 
 .superdoc__layers {
   height: 100%;
+  /* Keep the document shell full-width rather than fit-content: the shell
+     collapses to the page width when chrome (the v2 ruler host) unmounts,
+     which both left-anchors the page (its own `margin: 0 auto` then has no
+     room) and leaves `syncV2RulerOffset` computing 0/0 paddings against the
+     collapsed container once the ruler is toggled back on. */
+  width: 100%;
   position: relative;
   box-sizing: border-box;
 }
