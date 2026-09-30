@@ -4,6 +4,29 @@ This is the only examples catalog for SuperDoc. Each child directory is a small,
 
 Every example is typechecked and has a behavior test for the outcome its README promises. Browser examples are also built before their behavior test runs.
 
+## Running an example inside this repository
+
+Inside the checkout, pnpm resolves `superdoc` to the workspace package, whose
+exports point into `dist/`. Build it from the repo root before starting an
+example:
+
+```bash
+pnpm build:superdoc
+```
+
+The react example also needs its wrapper built:
+
+```bash
+pnpm --filter @superdoc/react run build
+```
+
+Then start the example:
+
+```bash
+cd examples/collaboration
+pnpm dev
+```
+
 ## Examples
 
 ### Quickstarts
